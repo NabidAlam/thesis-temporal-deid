@@ -6,7 +6,7 @@ The goal: enable **temporally consistent video de-identification** while preserv
 
 ---
 
-## 🧠 Key Features
+## Key Features
 
 - Frame-by-frame de-identification via MaskAnyone
 - Temporal segmentation using:
