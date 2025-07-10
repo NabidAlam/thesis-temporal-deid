@@ -1,0 +1,21 @@
+model:
+  checkpoint_path: samurai/sam2/checkpoints/sam2.1_hiera_base_plus.pt
+  model_name: SAMURAI
+  device: cuda  # or "cpu" if needed
+
+tracking:
+  init_frame: 0         # Frame to initialize object tracking
+  init_with: face       # Options: "face", "pose", "manual_box"
+  kalman_filter: true   # Enable memory-guided mask propagation
+  max_missing_frames: 10
+
+inference:
+  resize_shorter_side: 720
+  max_longer_side: 1280
+  apply_mask_smoothing: true
+  mask_refinement_method: sam2_cuda_postprocessing  # optional, if CUDA ext builds
+
+output:
+  save_masks: true
+  save_overlay: true
+  overlay_alpha: 0.4

@@ -1,0 +1,81 @@
+# # model:
+# #   checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+# #   model_name: TSP-SAM
+# #   device: cuda
+
+
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+#   channel: 32
+#   device: cpu   # <--- force CPU explicitly
+
+
+# inference:
+#   resize_shorter_side: 720
+#   max_longer_side: 1280
+#   apply_box_prompt: true
+#   box_prompt_margin: 20
+#   apply_temporal_prompt: true
+#   motion_history_length: 5
+
+# output:
+#   save_masks: true
+#   save_overlay: true
+#   overlay_alpha: 0.5
+
+
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+#   channel: 32
+#   device: cuda  # <--- switched from cpu to cuda
+
+# inference:
+#   resize_shorter_side: 720
+#   max_longer_side: 1280
+#   apply_box_prompt: true
+#   box_prompt_margin: 20
+#   apply_temporal_prompt: true
+#   motion_history_length: 5
+
+# output:
+#   save_masks: true
+#   save_overlay: true
+#   overlay_alpha: 0.5
+
+
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+#   channel: 32
+#   device: cuda
+
+# inference:
+#   resize_shorter_side: 480      # Smaller resolution = faster & smaller output
+#   max_longer_side: 854
+#   apply_box_prompt: true
+#   box_prompt_margin: 20
+#   apply_temporal_prompt: true
+#   motion_history_length: 5
+
+# output:
+#   save_masks: true
+#   save_overlay: true
+#   save_frames: true         # Optional
+#   overlay_alpha: 0.5
+
+
+
+# tsp_sam_config.yaml
+
+model:
+  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  device: cuda
+  channel: 32
+
+inference:
+  target_size: [640, 360]
+
+output:
+  save_masks: true
+  save_frames: false
+  save_overlay: true
+  overlay_alpha: 0.5
