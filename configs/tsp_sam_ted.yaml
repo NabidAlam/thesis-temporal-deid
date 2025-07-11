@@ -1,16 +1,20 @@
 model:
   checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
-  device: cuda  # or "cpu" if you're testing
+  device: cuda
   channel: 32
 
 inference:
   frame_stride: 2
-  resize_width: 1280
-  resize_height: 720
-  min_area: 1000
+  min_area: 750
   suppress_bottom_text: true
 
 output:
-  save_frames: false        # save RGB input frames (optional)
-  save_overlay: true        # saves overlayed mask on frame
-  overlay_alpha: 0.5        # opacity of mask on overlay
+  save_overlay: true
+  overlay_alpha: 0.5
+  save_frames: true
+
+# New additions
+compare_sam: true
+fusion_method: "union"
+sam_checkpoint: "checkpoints/sam_vit_b.pth"
+sam_model_type: "vit_b"

@@ -78,6 +78,46 @@ def resize_frame(frame, cfg):
 #         cv2.imwrite(overlay_path, overlay, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
 
+# import os
+# import cv2
+# import numpy as np
+
+# def save_mask_and_frame(frame, mask, output_dir, frame_idx,
+#                         save_overlay=True, overlay_alpha=0.5,
+#                         save_frames=False, save_composite=False):
+#     """
+#     Save mask, (optional) overlay, and (optional) raw frame.
+#     If `save_composite` is True, a side-by-side view of original and overlay is saved.
+#     """
+#     os.makedirs(output_dir, exist_ok=True)
+
+#     # Ensure mask has 1 channel and matches frame size
+#     if mask.shape != frame.shape[:2]:
+#         raise ValueError(f"Mask and frame shape mismatch: {mask.shape} vs {frame.shape[:2]}")
+
+#     mask_color = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+#     frame_filename = os.path.join(output_dir, f"{frame_idx:05d}.jpg")
+#     mask_filename = os.path.join(output_dir, f"{frame_idx:05d}_mask.png")
+#     overlay_filename = os.path.join(output_dir, f"{frame_idx:05d}_overlay.jpg")
+#     composite_filename = os.path.join(output_dir, f"{frame_idx:05d}_composite.jpg")
+
+#     if save_frames:
+#         cv2.imwrite(frame_filename, frame)
+
+#     cv2.imwrite(mask_filename, mask)
+
+#     if save_overlay or save_composite:
+#         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, mask_color, overlay_alpha, 0)
+
+#         if save_overlay:
+#             cv2.imwrite(overlay_filename, overlay)
+
+#         if save_composite:
+#             composite = np.hstack((frame, overlay))
+#             cv2.imwrite(composite_filename, composite)
+
+
 import os
 import cv2
 import numpy as np
@@ -91,22 +131,35 @@ def save_mask_and_frame(frame, mask, output_dir, frame_idx,
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Ensure mask has 1 channel and matches frame size
+    # Ensure mask is single channel and same size as frame
     if mask.shape != frame.shape[:2]:
         raise ValueError(f"Mask and frame shape mismatch: {mask.shape} vs {frame.shape[:2]}")
 
+    # Normalize mask if needed (ensure 0 or 255)
+    if mask.max() == 1:
+        mask = (mask * 255).astype(np.uint8)
+
+    elif mask.max() > 1 and mask.max() < 255:
+        print(f"[WARN] Mask has unusual max value ({mask.max()}). Forcing normalization.")
+        mask = ((mask > 127).astype(np.uint8)) * 255
+
+    # Convert to 3-channel color mask
     mask_color = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
 
+    # File naming
     frame_filename = os.path.join(output_dir, f"{frame_idx:05d}.jpg")
     mask_filename = os.path.join(output_dir, f"{frame_idx:05d}_mask.png")
     overlay_filename = os.path.join(output_dir, f"{frame_idx:05d}_overlay.jpg")
     composite_filename = os.path.join(output_dir, f"{frame_idx:05d}_composite.jpg")
 
+    # Save original frame if needed
     if save_frames:
         cv2.imwrite(frame_filename, frame)
 
+    # Save binary mask
     cv2.imwrite(mask_filename, mask)
 
+    # Save overlay and composite view
     if save_overlay or save_composite:
         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, mask_color, overlay_alpha, 0)
 

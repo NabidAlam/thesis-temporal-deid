@@ -83,7 +83,7 @@
 
 
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth 
+  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth 
   device: cuda
   channel: 32
 
