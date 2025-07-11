@@ -1,13 +1,14 @@
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
   device: cuda  # or "cpu" if you're testing
   channel: 32
 
 inference:
-  frame_stride: 2           # process every 2nd frame
-  resize_width: 1280        # keep close to TED resolution
+  frame_stride: 2
+  resize_width: 1280
   resize_height: 720
-  min_area: 200             # skip small noisy blobs
+  min_area: 1000
+  suppress_bottom_text: true
 
 output:
   save_frames: false        # save RGB input frames (optional)
