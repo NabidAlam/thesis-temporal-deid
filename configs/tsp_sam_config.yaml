@@ -66,16 +66,34 @@
 
 # tsp_sam_config.yaml
 
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+#   device: cuda
+#   channel: 32
+
+# inference:
+#   target_size: [640, 360]
+
+# output:
+#   save_masks: true
+#   save_frames: false
+#   save_overlay: true
+#   overlay_alpha: 0.5
+
+
+
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth 
   device: cuda
   channel: 32
 
 inference:
-  target_size: [640, 360]
+  resize_shorter_side: 720       # for aspect-preserving resizing
+  max_longer_side: 1280          # avoid extreme upscaling/downscaling
+  frame_stride: 6                # process every 6th frame (~5 fps)
 
 output:
-  save_masks: true
-  save_frames: false
-  save_overlay: true
+  save_masks: true               # enable mask saving
+  save_frames: false             # disable raw frame saving (to save disk + time)
+  save_overlay: false            # disable for speed; turn on if needed
   overlay_alpha: 0.5

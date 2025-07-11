@@ -1,0 +1,15 @@
+model:
+  checkpoint_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  device: cuda  # or "cpu" if you're testing
+  channel: 32
+
+inference:
+  frame_stride: 2           # process every 2nd frame
+  resize_width: 1280        # keep close to TED resolution
+  resize_height: 720
+  min_area: 200             # skip small noisy blobs
+
+output:
+  save_frames: false        # save RGB input frames (optional)
+  save_overlay: true        # saves overlayed mask on frame
+  overlay_alpha: 0.5        # opacity of mask on overlay
