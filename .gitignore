@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Output artifacts
+output/
+results/
+
+# Checkpoints and models
+checkpoints/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+.env
+.env.*
+environment.yml
+
+# VS Code settings
+.vscode/
+*.code-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python virtual environment
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Compiled files
+*.out
+*.o
+*.a
+*.exe
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Git submodules lock file
+.gitmodules
