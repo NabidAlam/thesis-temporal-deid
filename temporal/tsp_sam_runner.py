@@ -1,6 +1,8 @@
 
 # python temporal/tsp_sam_runner.py input/ted/video1.mp4 output/tsp_sam/ted configs/tsp_sam_ted.yaml
 
+# tsp_sam_runner.py — Final Updated Version with MySAM2Client Integration
+
 import os
 import sys
 import cv2
@@ -14,6 +16,7 @@ from tqdm import tqdm
 import csv
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
+import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.append(os.path.abspath("tsp_sam"))
@@ -22,9 +25,10 @@ sys.path.append(os.path.abspath("temporal"))
 from tsp_sam.lib.pvtv2_afterTEM import Network
 from utils import save_mask_and_frame, resize_frame
 from maskanyone_sam_wrapper import MaskAnyoneSAMWrapper
+from pose_extractor import extract_pose_keypoints
+from my_sam2_client import MySAM2Client
 
-
-def post_process_fused_mask(fused_mask, min_area=500, kernel_size=5):
+def post_process_fused_mask(fused_mask, min_area=100, kernel_size=5):
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
     cleaned = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
     closed = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
@@ -34,7 +38,6 @@ def post_process_fused_mask(fused_mask, min_area=500, kernel_size=5):
         if cv2.contourArea(cnt) > min_area:
             cv2.drawContours(filtered, [cnt], -1, 255, -1)
     return cv2.dilate(filtered, kernel, iterations=1)
-
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -49,12 +52,10 @@ def extract_bbox_from_mask(mask, margin_ratio=0.05):
     y2 = min(y + h + margin_y, mask.shape[0])
     return [x1, y1, x2, y2]
 
-
-def get_adaptive_threshold(prob_np, percentile=95):
+def get_adaptive_threshold(prob_np, percentile=98):
     return np.percentile(prob_np.flatten(), percentile)
 
-
-def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=750, suppress_bottom=False):
+def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=1500, suppress_bottom=False):
     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     transform = T.Compose([
         T.Resize((512, 512)),
@@ -72,9 +73,11 @@ def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area
         output = output.squeeze()
         prob = torch.sigmoid(output).cpu().numpy()
 
-    adaptive_thresh = get_adaptive_threshold(prob, percentile=95)
+    adaptive_thresh = get_adaptive_threshold(prob, percentile=98)
     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
     mask_denoised = median_filter(raw_mask, size=3)
+    mask_denoised = cv2.GaussianBlur(mask_denoised, (5, 5), 0)
+
     kernel = np.ones((5, 5), np.uint8)
     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
     mask_cleaned = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel)
@@ -104,6 +107,12 @@ def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area
 
     return final_mask, stats
 
+def scale_keypoints(keypoints, original_shape, target_shape=(512, 512)):
+    orig_h, orig_w = original_shape
+    target_h, target_w = target_shape
+    scale_x = target_w / orig_w
+    scale_y = target_h / orig_h
+    return [[int(x * scale_x), int(y * scale_y)] for x, y in keypoints]
 
 def run_tsp_sam(input_path, output_path_base, config_path):
     print("Loading configuration...")
@@ -114,11 +123,10 @@ def run_tsp_sam(input_path, output_path_base, config_path):
     infer_cfg = config["inference"]
     output_cfg = config["output"]
     frame_stride = infer_cfg.get("frame_stride", 2)
-    min_area = infer_cfg.get("min_area", 400)
+    min_area = infer_cfg.get("min_area", 1500)
     suppress_bottom = infer_cfg.get("suppress_bottom_text", False)
 
     class Opt: pass
-
     opt = Opt()
     opt.resume = model_cfg["checkpoint_path"]
     opt.device = model_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
@@ -135,6 +143,7 @@ def run_tsp_sam(input_path, output_path_base, config_path):
     model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
 
     sam_wrapper = MaskAnyoneSAMWrapper()
+    sam2_client = MySAM2Client()
 
     video_name = Path(input_path).stem
     output_path = Path(output_path_base) / video_name
@@ -145,105 +154,83 @@ def run_tsp_sam(input_path, output_path_base, config_path):
     output_path.mkdir(parents=True, exist_ok=True)
 
     debug_csv_path = output_path / "debug_stats.csv"
-    with open(debug_csv_path, "w", newline="") as debug_file:
+    pose_csv_path = output_path / "pose_keypoints.csv"
+    pose_json_path = output_path / "pose_keypoints.json"
+
+    with open(debug_csv_path, "w", newline="") as debug_file, open(pose_csv_path, "w", newline="") as pose_file:
         csv_writer = csv.writer(debug_file)
-        csv_writer.writerow(["frame_idx", "mean", "max", "min", "adaptive_thresh", "mask_area"])
+        pose_writer = csv.writer(pose_file)
+        csv_writer.writerow(["frame_idx", "mean", "max", "min", "adaptive_thresh", "mask_area", "sam_area", "pose_area", "fused_area"])
+        pose_writer.writerow(["frame_idx", "keypoints"])
+
+        pose_json = {}
 
         cap = cv2.VideoCapture(input_path)
-        if not cap.isOpened():
-            raise IOError(f"Cannot open video: {input_path}")
-
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"Total frames in video: {total_frames}")
+        frame_idx = 0
 
-        frame_idx = saved_frames = empty_masks = 0
-        with tqdm(total=total_frames // frame_stride, desc="Processing Frames", unit="frame") as pbar:
-            while True:
+        with tqdm(total=total_frames // frame_stride) as pbar:
+            while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
+
                 if frame_idx % frame_stride != 0:
                     frame_idx += 1
                     continue
-                
-                print(f"\n[FRAME {frame_idx}] Processing...")
 
                 frame_resized = resize_frame(frame, infer_cfg)
-                print(f"[DEBUG] Resized frame to: {frame_resized.shape}")
+                rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
 
-                mask, stats = model_infer_real(
-                    model, frame_resized,
-                    debug_save_dir=output_path / "threshold_debug",
-                    frame_idx=frame_idx,
-                    min_area=min_area,
-                    suppress_bottom=suppress_bottom
-                )
-                
-                
-                print(f"[DEBUG] TSP Mask stats: mean={stats['mean']:.4f}, "
-                      f"max={stats['max']:.4f}, min={stats['min']:.4f}, "
-                      f"threshold={stats['adaptive_thresh']:.4f}, area={stats['mask_area']}")
-                
+                tsp_mask, stats = model_infer_real(model, frame_resized, frame_idx=frame_idx, debug_save_dir=output_path / "tsp_thresh", min_area=min_area, suppress_bottom=suppress_bottom)
+                bbox = extract_bbox_from_mask(tsp_mask)
 
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w = frame.shape[:2]
-
-                bbox = extract_bbox_from_mask(mask)
-                if bbox is None:
-                    print(f"[WARN] Frame {frame_idx}: No valid bbox extracted from TSP mask. Skipping SAM.")
-                    sam_mask = np.zeros_like(mask, dtype=np.uint8)
+                if bbox:
+                    raw_sam_mask = sam_wrapper.segment_with_box(rgb, str(bbox))
+                    sam_mask = cv2.resize(raw_sam_mask, (tsp_mask.shape[1], tsp_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
                 else:
-                    bbox_str = str(bbox).replace(" ", "")
-                    print(f"[INFO] Extracted BBox for SAM: {bbox_str}")
-                    sam_mask = sam_wrapper.segment_with_box(frame_rgb, bbox_str)
+                    sam_mask = np.zeros_like(tsp_mask)
 
-                sam_mask_resized = cv2.resize(sam_mask, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-                print(f"[DEBUG] SAM mask unique values: {np.unique(sam_mask_resized)}")
+                keypoints = extract_pose_keypoints(rgb, draw_debug=True, frame_idx=frame_idx, debug_dir=str(output_path / "pose_debug"))
+                if keypoints:
+                    scaled_kpts = scale_keypoints(keypoints, original_shape=frame_resized.shape[:2])
+                    point_labels = [1] * len(scaled_kpts)
+                    pose_masks = sam2_client.predict_points(Image.fromarray(rgb), scaled_kpts, point_labels)
+                    raw_pose_mask = pose_masks[0] if pose_masks and pose_masks[0] is not None else np.zeros_like(tsp_mask)
+                    pose_mask = cv2.resize(raw_pose_mask, (tsp_mask.shape[1], tsp_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
+                else:
+                    pose_mask = np.zeros_like(tsp_mask)
 
-                fused_mask = cv2.bitwise_or(mask // 255, sam_mask_resized // 255) * 255
-                print(f"[DEBUG] Pre-postprocess fused mask sum: {np.sum(fused_mask)}")
+                pose_writer.writerow([frame_idx, keypoints])
+                pose_json[frame_idx] = keypoints
 
+                fused_mask = cv2.bitwise_or(tsp_mask, sam_mask)
+                fused_mask = cv2.bitwise_or(fused_mask, pose_mask)
                 fused_mask = post_process_fused_mask(fused_mask)
-                print(f"[DEBUG] Post-processed fused mask sum: {np.sum(fused_mask)}")
 
-                mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
+                fused_area = int(np.sum(fused_mask > 0))
+                sam_area = int(np.sum(sam_mask > 0))
+                pose_area = int(np.sum(pose_mask > 0))
 
                 csv_writer.writerow([
-                    frame_idx, stats["mean"], stats["max"], stats["min"],
-                    stats["adaptive_thresh"], stats["mask_area"]
+                    frame_idx, stats['mean'], stats['max'], stats['min'],
+                    stats['adaptive_thresh'], stats['mask_area'], sam_area, pose_area, fused_area
                 ])
 
-                cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_tsp_only_mask.png", mask)
-                cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_sam_only_mask.png", sam_mask_resized)
-                cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_fused_mask.png", fused_mask)
+                if fused_area > 0:
+                    resized_fused_mask = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    save_mask_and_frame(frame, resized_fused_mask, str(output_path), frame_idx,
+                        save_overlay=True, overlay_alpha=0.5, save_frames=False, save_composite=True)
 
-                if mask.sum() > 0 or sam_mask_resized.sum() > 0:
-                    print(f"[SAVE] Saving mask + overlays for frame {frame_idx}")
-
-                    save_mask_and_frame(
-                        frame, mask_resized, str(output_path), frame_idx,
-                        save_overlay=output_cfg.get("save_overlay", False),
-                        overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-                        save_frames=output_cfg.get("save_frames", False),
-                        save_composite=True
-                    )
-                    saved_frames += 1
-                else:
-                    print(f"[INFO] Empty mask — skipping save")
-                    empty_masks += 1
-                    if empty_masks <= 3:
-                        print(f"Frame {frame_idx}: Mask is empty.")
                 frame_idx += 1
                 pbar.update(1)
 
+        with open(pose_json_path, "w") as f_json:
+            json.dump(pose_json, f_json, indent=2)
+
         cap.release()
-
-    print(f"\nFinished processing {frame_idx} frames.")
-    print(f"Masks saved: {saved_frames}")
-    print(f"Empty masks: {empty_masks}")
-    print(f"Debug stats written to: {debug_csv_path}")
-    print(f"Output written to: {output_path}")
-
+        print(f"\nFinished processing {frame_idx} frames.")
+        print(f"Output written to: {output_path}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
