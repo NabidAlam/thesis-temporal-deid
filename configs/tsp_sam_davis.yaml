@@ -1,0 +1,37 @@
+# -------------------------
+# Model Configuration
+# -------------------------
+model:
+  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
+  device: cuda
+  channel: 32
+
+# -------------------------
+# Inference Settings
+# -------------------------
+inference:
+  frame_stride: 1                     # Use stride=1 for DAVIS accuracy
+  adaptive_percentile: 98            # Stricter thresholding for clean masks
+  min_area: 1500                     # Recommended for DAVIS-quality masks
+  suppress_bottom_text: true         # DAVIS has subtitles, useful to suppress
+  dynamic_kernel_divisor: 100        # Enables adaptive kernel sizing
+
+# -------------------------
+# Output Control
+# -------------------------
+output:
+  save_overlay: true
+  overlay_alpha: 0.5
+  save_frames: false                 # Only needed for debugging
+
+# -------------------------
+# SAM Fusion Settings
+# -------------------------
+compare_sam: false                   # For DAVIS baseline: only TSP-SAM
+fusion_method: "tsp_only"           # No SAM, no Pose—pure TSP-SAM for reproducibility
+
+# -------------------------
+# SAM Checkpoint Info
+# -------------------------
+sam_checkpoint: temporal/checkpoints/sam_vit_b_01ec64.pth
+sam_model_type: vit_b

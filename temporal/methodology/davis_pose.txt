@@ -1,0 +1,19 @@
+| DAVIS Video Name     | Why it's relevant                |
+| -------------------- | ------------------------------------ |
+| `blackswan`          | Person walking among swans           |
+| `bmx-bumps`          | Human riding a BMX                   |
+| `boxing`             | Human performing boxing moves        |
+| `breakdance`         | Body motion and dance segmentation   |
+| `dance-twirl`        | Full-body rotation and motion trails |
+| `drift-chicane`      | Person seen next to car              |
+| `hike`               | Walking with gait visible            |
+| `horsejump-high`     | Rider on horse                       |
+| `judo`               | Dynamic human interaction            |
+| `kid-football`       | Fast human movements and occlusion   |
+| `paragliding-launch` | Full-body walking + equipment        |
+| `rollerblade`        | High-speed motion and occlusion      |
+| `scooter-board`      | Subtle body pose in motion           |
+| `surf`               | Pose + motion across water           |
+| `tennis`             | Fast dynamic gestures (arms, legs)   |
+| `walking`            | Gait and full-body motion            |
+| `parkour`            | Dynamic body movement, occlusion     |

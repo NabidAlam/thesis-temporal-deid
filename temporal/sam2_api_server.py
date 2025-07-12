@@ -44,7 +44,9 @@ async def segment_image(image: UploadFile, box: str = Form(...), mode: str = For
         if not isinstance(box_eval, list) or len(box_eval) != 4:
             raise ValueError("Box must be a list of four coordinates.")
     except Exception as e:
-        return {"error": f"Invalid box format: {e}"}
+        logger.exception("[Server ERROR] segment")  # ← Log full traceback
+        return Response(content=f"Error: {e}", status_code=500)
+        # return {"error": f"Invalid box format: {e}"}
 
     predictor.set_image(img_np)
     input_box = torch.tensor([box_eval], dtype=torch.float, device=DEVICE)
@@ -99,8 +101,10 @@ async def predict_from_points(image: UploadFile, point_coords: str = Form(...), 
         return Response(content=encoded.tobytes(), media_type="image/png")
 
     except Exception as e:
-        print(f"[Server ERROR] predict-points: {e}")
+        logger.exception("[Server ERROR] predict-points")  # ← Log full traceback
         return Response(content=f"Error: {e}", status_code=500)
+        # print(f"[Server ERROR] predict-points: {e}")
+        # return Response(content=f"Error: {e}", status_code=500)
 
 
 if __name__ == "__main__":

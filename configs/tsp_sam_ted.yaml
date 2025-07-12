@@ -10,9 +10,11 @@ model:
 # Inference settings
 # -------------------------
 inference:
-  frame_stride: 6                     # Process every 6th frame
-  min_area: 100                     # Minimum pixel area for a valid mask
+  frame_stride: 3                    # Process every 6th frame
+  min_area: 1500                      # Minimum pixel area for a valid mask
   suppress_bottom_text: true         # Zero out bottom 10% of mask to remove subtitles/watermarks
+  dynamic_kernel_divisor: 100       # Dynamic kernel size based on mask area newly added
+  adaptive_percentile: 96         # Percentile for adaptive thresholding (default 96) newly added
 
 # -------------------------
 # Output control
@@ -33,3 +35,4 @@ fusion_method: "union"             # Mask fusion strategy: "union", "intersectio
 # -------------------------
 sam_checkpoint: "temporal/checkpoints/sam_vit_b_01ec64.pth"  # Pretrained SAM checkpoint
 sam_model_type: "vit_b"                                      # SAM backbone: vit_b / vit_l / vit_h
+# Source: https://github.com/facebookresearch/segment-anything?tab=readme-ov-file
