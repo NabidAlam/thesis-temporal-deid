@@ -1,685 +1,3 @@
-# import os
-# import sys
-# import cv2
-# import yaml
-# import torch
-# import numpy as np
-# from pathlib import Path
-# from PIL import Image
-# import torchvision.transforms as T
-# from tqdm import tqdm
-# import csv
-# import matplotlib.pyplot as plt
-# from scipy.ndimage import median_filter
-
-# # Add root and module paths
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-# sys.path.append(os.path.abspath("tsp_sam"))
-# sys.path.append(os.path.abspath("temporal"))
-
-# from tsp_sam.lib.pvtv2_afterTEM import Network
-# from utils import save_mask_and_frame, resize_frame
-
-
-# def get_adaptive_threshold(prob_np, percentile=99.5):
-#     return np.percentile(prob_np.flatten(), percentile)
-
-
-# # def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=200):
-# #     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-# #     transform = T.Compose([
-# #         T.Resize((512, 512)),
-# #         T.ToTensor(),
-# #         T.Normalize(mean=[0.485, 0.456, 0.406],
-# #                     std=[0.229, 0.224, 0.225])
-# #     ])
-# #     input_tensor = transform(image).unsqueeze(0).to(next(model.parameters()).device)
-
-# #     with torch.no_grad():
-# #         output = model(input_tensor)
-# #         if isinstance(output, tuple):
-# #             output = output[0]
-# #         if output.dim() == 4:
-# #             output = output[0]
-# #         output = output.squeeze()
-
-# #         prob = torch.sigmoid(output)
-# #         prob_np = prob.cpu().numpy()
-
-# #     adaptive_thresh = get_adaptive_threshold(prob_np, percentile=98)
-# #     raw_mask = (prob_np > adaptive_thresh).astype(np.uint8)
-
-# #     # Apply median filter
-# #     mask_denoised = median_filter(raw_mask, size=3)
-
-# #     # Filter small blobs
-# #     num_pixels = np.sum(mask_denoised)
-# #     if num_pixels < min_area:
-# #         final_mask = np.zeros_like(mask_denoised, dtype=np.uint8)
-# #     else:
-# #         final_mask = mask_denoised * 255
-
-# #     stats = {
-# #         "mean": float(prob_np.mean()),
-# #         "max": float(prob_np.max()),
-# #         "min": float(prob_np.min()),
-# #         "adaptive_thresh": float(adaptive_thresh),
-# #         "mask_area": int(num_pixels)
-# #     }
-
-# #     print(f"[DEBUG] Frame {frame_idx} — shape: {prob_np.shape}, max: {stats['max']:.4f}, "
-# #           f"min: {stats['min']:.4f}, mean: {stats['mean']:.4f}, "
-# #           f"adaptive_thresh: {adaptive_thresh:.4f}, area: {num_pixels}")
-
-# #     # Save debug masks and histogram
-# #     if debug_save_dir and frame_idx is not None:
-# #         os.makedirs(debug_save_dir, exist_ok=True)
-# #         for thresh in [0.3, 0.5, 0.7, 0.9]:
-# #             temp_mask = (prob_np > thresh).astype(np.uint8) * 255
-# #             cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_th{int(thresh * 100)}.png"), temp_mask)
-
-# #         cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_adaptive_{int(adaptive_thresh * 100)}.png"), final_mask)
-
-# #         plt.hist(prob_np.ravel(), bins=50)
-# #         plt.title(f"Pixel Probabilities (frame {frame_idx})")
-# #         plt.savefig(os.path.join(debug_save_dir, f"{frame_idx:05d}_hist.png"))
-# #         plt.close()
-
-# #     return final_mask, stats
-
-
-
-# def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=750):
-#     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-#     transform = T.Compose([
-#         T.Resize((512, 512)),
-#         T.ToTensor(),
-#         T.Normalize(mean=[0.485, 0.456, 0.406],
-#                     std=[0.229, 0.224, 0.225])
-#     ])
-#     input_tensor = transform(image).unsqueeze(0).to(next(model.parameters()).device)
-
-#     with torch.no_grad():
-#         output = model(input_tensor)
-#         if isinstance(output, tuple):
-#             output = output[0]
-#         if output.dim() == 4:
-#             output = output[0]
-#         output = output.squeeze()
-
-#         prob = torch.sigmoid(output)
-#         prob_np = prob.cpu().numpy()
-
-#     # Step 1: Adaptive thresholding
-#     adaptive_thresh = get_adaptive_threshold(prob_np, percentile=99.5)
-#     raw_mask = (prob_np > adaptive_thresh).astype(np.uint8)
-
-#     # Step 2: Median filtering (denoising)
-#     mask_denoised = median_filter(raw_mask, size=3)
-
-#     # Step 3: Morphological opening to remove small blobs
-#     kernel = np.ones((5, 5), np.uint8)
-#     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
-#     mask_cleaned = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel)
-
-#     # Step 4: Area-based filtering
-#     num_pixels = np.sum(mask_cleaned)
-#     if num_pixels < min_area:
-#         final_mask = np.zeros_like(mask_cleaned, dtype=np.uint8)
-#     else:
-#         final_mask = mask_cleaned * 255
-
-#     # Stats for CSV/debug
-#     stats = {
-#         "mean": float(prob_np.mean()),
-#         "max": float(prob_np.max()),
-#         "min": float(prob_np.min()),
-#         "adaptive_thresh": float(adaptive_thresh),
-#         "mask_area": int(num_pixels)
-#     }
-
-#     print(f"[DEBUG] Frame {frame_idx} — shape: {prob_np.shape}, max: {stats['max']:.4f}, "
-#           f"min: {stats['min']:.4f}, mean: {stats['mean']:.4f}, "
-#           f"adaptive_thresh: {adaptive_thresh:.4f}, area: {num_pixels}")
-
-#     # Step 5: Save debug visuals
-#     if debug_save_dir and frame_idx is not None:
-#         os.makedirs(debug_save_dir, exist_ok=True)
-#         for thresh in [0.3, 0.5, 0.7, 0.9]:
-#             temp_mask = (prob_np > thresh).astype(np.uint8) * 255
-#             cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_th{int(thresh * 100)}.png"), temp_mask)
-
-#         cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_adaptive_{int(adaptive_thresh * 100)}.png"), final_mask)
-
-#         plt.hist(prob_np.ravel(), bins=50)
-#         plt.title(f"Pixel Probabilities (frame {frame_idx})")
-#         plt.savefig(os.path.join(debug_save_dir, f"{frame_idx:05d}_hist.png"))
-#         plt.close()
-
-#     return final_mask, stats
-
-
-
-# def run_tsp_sam(input_path, output_path_base, config_path):
-#     print("Loading configuration...")
-#     with open(config_path, 'r') as f:
-#         config = yaml.safe_load(f)
-
-#     model_cfg = config["model"]
-#     infer_cfg = config["inference"]
-#     output_cfg = config["output"]
-#     frame_stride = infer_cfg.get("frame_stride", 2)
-
-#     class Opt: pass
-#     opt = Opt()
-#     opt.resume = model_cfg["checkpoint_path"]
-#     opt.device = model_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-#     opt.gpu_ids = [0] if opt.device == "cuda" and torch.cuda.is_available() else []
-#     opt.channel = model_cfg.get("channel", 32)
-
-#     print(f"Initializing model on device: {opt.device}")
-#     model = Network(opt)
-#     if opt.device == "cuda":
-#         model = torch.nn.DataParallel(model, device_ids=opt.gpu_ids).cuda()
-#     else:
-#         model = model.cpu()
-
-#     print(f"Loading weights from: {opt.resume}")
-#     pretrained_weights = torch.load(opt.resume, map_location=opt.device)
-#     result = model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
-#     if isinstance(result, dict):
-#         print("Weights loaded.")
-#         print("   - Missing keys:", result.get("missing_keys", []))
-#         print("   - Unexpected keys:", result.get("unexpected_keys", []))
-
-#     model.eval()
-
-#     video_name = Path(input_path).stem
-#     output_path = Path(output_path_base) / video_name
-#     if output_path.exists():
-#         print(f"Cleaning previous run: {output_path}")
-#         import shutil
-#         shutil.rmtree(output_path)
-#     output_path.mkdir(parents=True, exist_ok=True)
-#     print(f"Output directory: {output_path}")
-
-#     debug_csv_path = output_path / "debug_stats.csv"
-#     debug_file = open(debug_csv_path, mode="w", newline="")
-#     csv_writer = csv.writer(debug_file)
-#     csv_writer.writerow(["frame_idx", "mean", "max", "min", "adaptive_thresh", "mask_area"])
-
-#     cap = cv2.VideoCapture(input_path)
-#     if not cap.isOpened():
-#         raise IOError(f"Cannot open video: {input_path}")
-
-#     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#     print(f"Total frames in video: {total_frames}")
-
-#     frame_idx = 0
-#     saved_frames = 0
-#     empty_masks = 0
-
-#     with tqdm(total=total_frames // frame_stride, desc="Processing Frames", unit="frame") as pbar:
-#         while True:
-#             ret, frame = cap.read()
-#             if not ret:
-#                 break
-
-#             if frame_idx % frame_stride != 0:
-#                 frame_idx += 1
-#                 continue
-
-#             frame_resized = resize_frame(frame, infer_cfg)
-#             mask, stats = model_infer_real(
-#                 model,
-#                 frame_resized,
-#                 debug_save_dir=output_path / "threshold_debug",
-#                 frame_idx=frame_idx
-#             )
-            
-#             mask_resized = cv2.resize(mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-
-#             csv_writer.writerow([
-#                 frame_idx, stats["mean"], stats["max"], stats["min"],
-#                 stats["adaptive_thresh"], stats["mask_area"]
-#             ])
-
-#             if mask.sum() > 0:
-#                 save_mask_and_frame(
-#                     frame,
-#                     mask_resized,
-#                     str(output_path),
-#                     frame_idx,
-#                     save_overlay=output_cfg.get("save_overlay", False),
-#                     overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-#                     save_frames=output_cfg.get("save_frames", False),
-#                     save_composite=True
-#                 )
-#                 saved_frames += 1
-#             else:
-#                 empty_masks += 1
-#                 if empty_masks <= 3:
-#                     print(f"Frame {frame_idx}: Mask is empty.")
-
-#             frame_idx += 1
-#             pbar.update(1)
-
-#     cap.release()
-#     debug_file.close()
-
-#     print(f"\nFinished processing {frame_idx} frames.")
-#     print(f"Masks saved: {saved_frames}")
-#     print(f"Empty masks: {empty_masks}")
-#     print(f"Debug stats written to: {debug_csv_path}")
-#     print(f"Output written to: {output_path}")
-
-
-# if __name__ == "__main__":
-#     if len(sys.argv) != 4:
-#         print("Usage: python tsp_sam_runner.py <input_video> <output_base_dir> <config_path>")
-#         sys.exit(1)
-
-#     input_path = sys.argv[1]
-#     output_base = sys.argv[2]
-#     config_path = sys.argv[3]
-
-#     run_tsp_sam(input_path, output_base, config_path)
-
-
-# import os
-# import sys
-# import cv2
-# import yaml
-# import torch
-# import numpy as np
-# from pathlib import Path
-# from PIL import Image
-# import torchvision.transforms as T
-# from tqdm import tqdm
-# import csv
-# import matplotlib.pyplot as plt
-# from scipy.ndimage import median_filter
-
-# # Add paths
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-# sys.path.append(os.path.abspath("tsp_sam"))
-# sys.path.append(os.path.abspath("temporal"))
-
-# from tsp_sam.lib.pvtv2_afterTEM import Network
-# from utils import save_mask_and_frame, resize_frame
-
-
-# def get_adaptive_threshold(prob_np, percentile=99.5):
-#     return np.percentile(prob_np.flatten(), percentile)
-
-
-# def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=750, suppress_bottom=False):
-#     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-#     transform = T.Compose([
-#         T.Resize((512, 512)),
-#         T.ToTensor(),
-#         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-#     ])
-#     input_tensor = transform(image).unsqueeze(0).to(next(model.parameters()).device)
-
-#     with torch.no_grad():
-#         output = model(input_tensor)
-#         if isinstance(output, tuple): output = output[0]
-#         if output.dim() == 4: output = output[0]
-#         output = output.squeeze()
-#         prob = torch.sigmoid(output).cpu().numpy()
-
-#     adaptive_thresh = get_adaptive_threshold(prob, percentile=99.5)
-#     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
-
-#     mask_denoised = median_filter(raw_mask, size=3)
-#     kernel = np.ones((5, 5), np.uint8)
-#     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
-#     mask_cleaned = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel)
-
-#     # 🔽 Bottom suppression (TED text region)
-#     if suppress_bottom:
-#         h = mask_cleaned.shape[0]
-#         mask_cleaned[int(h * 0.9):, :] = 0
-
-#     num_pixels = np.sum(mask_cleaned)
-#     final_mask = mask_cleaned * 255 if num_pixels >= min_area else np.zeros_like(mask_cleaned, dtype=np.uint8)
-
-#     stats = {
-#         "mean": float(prob.mean()), "max": float(prob.max()), "min": float(prob.min()),
-#         "adaptive_thresh": float(adaptive_thresh), "mask_area": int(num_pixels)
-#     }
-
-#     print(f"[DEBUG] Frame {frame_idx} — mean: {stats['mean']:.4f}, max: {stats['max']:.4f}, "
-#           f"min: {stats['min']:.4f}, thresh: {adaptive_thresh:.4f}, area: {num_pixels}")
-
-#     if debug_save_dir and frame_idx is not None:
-#         os.makedirs(debug_save_dir, exist_ok=True)
-#         for thresh in [0.3, 0.5, 0.7, 0.9]:
-#             temp_mask = (prob > thresh).astype(np.uint8) * 255
-#             cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_th{int(thresh * 100)}.png"), temp_mask)
-#         cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_adaptive_{int(adaptive_thresh * 100)}.png"), final_mask)
-#         plt.hist(prob.ravel(), bins=50)
-#         plt.title(f"Pixel Probabilities (frame {frame_idx})")
-#         plt.savefig(os.path.join(debug_save_dir, f"{frame_idx:05d}_hist.png"))
-#         plt.close()
-
-#     return final_mask, stats
-
-
-# def run_tsp_sam(input_path, output_path_base, config_path):
-#     print("Loading configuration...")
-#     with open(config_path, 'r') as f:
-#         config = yaml.safe_load(f)
-
-#     model_cfg = config["model"]
-#     infer_cfg = config["inference"]
-#     output_cfg = config["output"]
-#     frame_stride = infer_cfg.get("frame_stride", 2)
-#     min_area = infer_cfg.get("min_area", 750)
-#     suppress_bottom = infer_cfg.get("suppress_bottom_text", False)
-
-#     class Opt: pass
-#     opt = Opt()
-#     opt.resume = model_cfg["checkpoint_path"]
-#     opt.device = model_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-#     opt.gpu_ids = [0] if opt.device == "cuda" else []
-#     opt.channel = model_cfg.get("channel", 32)
-
-#     print(f"Initializing model on device: {opt.device}")
-#     model = Network(opt)
-#     model = torch.nn.DataParallel(model, device_ids=opt.gpu_ids).to(opt.device)
-#     model.eval()
-
-#     print(f"Loading weights from: {opt.resume}")
-#     pretrained_weights = torch.load(opt.resume, map_location=opt.device)
-#     result = model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
-#     print("Weights loaded.")
-#     if isinstance(result, dict):
-#         print("   - Missing keys:", result.get("missing_keys", []))
-#         print("   - Unexpected keys:", result.get("unexpected_keys", []))
-
-#     video_name = Path(input_path).stem
-#     output_path = Path(output_path_base) / video_name
-#     if output_path.exists():
-#         print(f"Cleaning previous run: {output_path}")
-#         import shutil
-#         shutil.rmtree(output_path)
-#     output_path.mkdir(parents=True, exist_ok=True)
-
-#     debug_csv_path = output_path / "debug_stats.csv"
-#     with open(debug_csv_path, "w", newline="") as debug_file:
-#         csv_writer = csv.writer(debug_file)
-#         csv_writer.writerow(["frame_idx", "mean", "max", "min", "adaptive_thresh", "mask_area"])
-
-#         cap = cv2.VideoCapture(input_path)
-#         if not cap.isOpened():
-#             raise IOError(f"Cannot open video: {input_path}")
-
-#         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#         print(f"Total frames in video: {total_frames}")
-
-#         frame_idx = saved_frames = empty_masks = 0
-#         with tqdm(total=total_frames // frame_stride, desc="Processing Frames", unit="frame") as pbar:
-#             while True:
-#                 ret, frame = cap.read()
-#                 if not ret:
-#                     break
-#                 if frame_idx % frame_stride != 0:
-#                     frame_idx += 1
-#                     continue
-
-#                 frame_resized = resize_frame(frame, infer_cfg)
-#                 mask, stats = model_infer_real(
-#                     model, frame_resized,
-#                     debug_save_dir=output_path / "threshold_debug",
-#                     frame_idx=frame_idx,
-#                     min_area=min_area,
-#                     suppress_bottom=suppress_bottom
-#                 )
-#                 mask_resized = cv2.resize(mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-
-#                 csv_writer.writerow([
-#                     frame_idx, stats["mean"], stats["max"], stats["min"],
-#                     stats["adaptive_thresh"], stats["mask_area"]
-#                 ])
-
-#                 if mask.sum() > 0:
-#                     save_mask_and_frame(
-#                         frame, mask_resized, str(output_path), frame_idx,
-#                         save_overlay=output_cfg.get("save_overlay", False),
-#                         overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-#                         save_frames=output_cfg.get("save_frames", False),
-#                         save_composite=True
-#                     )
-#                     saved_frames += 1
-#                 else:
-#                     empty_masks += 1
-#                     if empty_masks <= 3:
-#                         print(f"Frame {frame_idx}: Mask is empty.")
-#                 frame_idx += 1
-#                 pbar.update(1)
-
-#         cap.release()
-
-#     print(f"\nFinished processing {frame_idx} frames.")
-#     print(f"Masks saved: {saved_frames}")
-#     print(f"Empty masks: {empty_masks}")
-#     print(f"Debug stats written to: {debug_csv_path}")
-#     print(f"Output written to: {output_path}")
-
-
-# if __name__ == "__main__":
-#     if len(sys.argv) != 4:
-#         print("Usage: python tsp_sam_runner.py <input_video> <output_base_dir> <config_path>")
-#         sys.exit(1)
-
-#     input_path = sys.argv[1]
-#     output_base = sys.argv[2]
-#     config_path = sys.argv[3]
-#     run_tsp_sam(input_path, output_base, config_path)
-
-
-
-# import os
-# import sys
-# import cv2
-# import yaml
-# import torch
-# import numpy as np
-# from pathlib import Path
-# from PIL import Image
-# import torchvision.transforms as T
-# from tqdm import tqdm
-# import csv
-# import matplotlib.pyplot as plt
-# from scipy.ndimage import median_filter
-
-# # Add paths
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-# sys.path.append(os.path.abspath("tsp_sam"))
-# sys.path.append(os.path.abspath("temporal"))
-
-# from tsp_sam.lib.pvtv2_afterTEM import Network
-# from utils import save_mask_and_frame, resize_frame
-# from maskanyone_sam_wrapper import MaskAnyoneSAMWrapper
-
-# def get_adaptive_threshold(prob_np, percentile=99.5):
-#     return np.percentile(prob_np.flatten(), percentile)
-
-# def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=750, suppress_bottom=False):
-#     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-#     transform = T.Compose([
-#         T.Resize((512, 512)),
-#         T.ToTensor(),
-#         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-#     ])
-#     input_tensor = transform(image).unsqueeze(0).to(next(model.parameters()).device)
-
-#     with torch.no_grad():
-#         output = model(input_tensor)
-#         if isinstance(output, tuple): output = output[0]
-#         if output.dim() == 4: output = output[0]
-#         output = output.squeeze()
-#         prob = torch.sigmoid(output).cpu().numpy()
-
-#     adaptive_thresh = get_adaptive_threshold(prob, percentile=99.5)
-#     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
-
-#     mask_denoised = median_filter(raw_mask, size=3)
-#     kernel = np.ones((5, 5), np.uint8)
-#     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
-#     mask_cleaned = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel)
-
-#     if suppress_bottom:
-#         h = mask_cleaned.shape[0]
-#         mask_cleaned[int(h * 0.9):, :] = 0
-
-#     num_pixels = np.sum(mask_cleaned)
-#     final_mask = mask_cleaned * 255 if num_pixels >= min_area else np.zeros_like(mask_cleaned, dtype=np.uint8)
-
-#     stats = {
-#         "mean": float(prob.mean()), "max": float(prob.max()), "min": float(prob.min()),
-#         "adaptive_thresh": float(adaptive_thresh), "mask_area": int(num_pixels)
-#     }
-
-#     print(f"[DEBUG] Frame {frame_idx} — mean: {stats['mean']:.4f}, max: {stats['max']:.4f}, "
-#           f"min: {stats['min']:.4f}, thresh: {adaptive_thresh:.4f}, area: {num_pixels}")
-
-#     if debug_save_dir and frame_idx is not None:
-#         os.makedirs(debug_save_dir, exist_ok=True)
-#         for thresh in [0.3, 0.5, 0.7, 0.9]:
-#             temp_mask = (prob > thresh).astype(np.uint8) * 255
-#             cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_th{int(thresh * 100)}.png"), temp_mask)
-#         cv2.imwrite(os.path.join(debug_save_dir, f"{frame_idx:05d}_adaptive_{int(adaptive_thresh * 100)}.png"), final_mask)
-#         plt.hist(prob.ravel(), bins=50)
-#         plt.title(f"Pixel Probabilities (frame {frame_idx})")
-#         plt.savefig(os.path.join(debug_save_dir, f"{frame_idx:05d}_hist.png"))
-#         plt.close()
-
-#     return final_mask, stats
-
-# def run_tsp_sam(input_path, output_path_base, config_path):
-#     print("Loading configuration...")
-#     with open(config_path, 'r') as f:
-#         config = yaml.safe_load(f)
-
-#     model_cfg = config["model"]
-#     infer_cfg = config["inference"]
-#     output_cfg = config["output"]
-#     frame_stride = infer_cfg.get("frame_stride", 2)
-#     min_area = infer_cfg.get("min_area", 750)
-#     suppress_bottom = infer_cfg.get("suppress_bottom_text", False)
-
-#     class Opt: pass
-#     opt = Opt()
-#     opt.resume = model_cfg["checkpoint_path"]
-#     opt.device = model_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-#     opt.gpu_ids = [0] if opt.device == "cuda" else []
-#     opt.channel = model_cfg.get("channel", 32)
-
-#     print(f"Initializing model on device: {opt.device}")
-#     model = Network(opt)
-#     model = torch.nn.DataParallel(model, device_ids=opt.gpu_ids).to(opt.device)
-#     model.eval()
-
-#     print(f"Loading weights from: {opt.resume}")
-#     pretrained_weights = torch.load(opt.resume, map_location=opt.device)
-#     result = model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
-#     print("Weights loaded.")
-#     if isinstance(result, dict):
-#         print("   - Missing keys:", result.get("missing_keys", []))
-#         print("   - Unexpected keys:", result.get("unexpected_keys", []))
-
-#     sam_wrapper = MaskAnyoneSAMWrapper()
-
-#     video_name = Path(input_path).stem
-#     output_path = Path(output_path_base) / video_name
-#     if output_path.exists():
-#         print(f"Cleaning previous run: {output_path}")
-#         import shutil
-#         shutil.rmtree(output_path)
-#     output_path.mkdir(parents=True, exist_ok=True)
-
-#     debug_csv_path = output_path / "debug_stats.csv"
-#     with open(debug_csv_path, "w", newline="") as debug_file:
-#         csv_writer = csv.writer(debug_file)
-#         csv_writer.writerow(["frame_idx", "mean", "max", "min", "adaptive_thresh", "mask_area"])
-
-#         cap = cv2.VideoCapture(input_path)
-#         if not cap.isOpened():
-#             raise IOError(f"Cannot open video: {input_path}")
-
-#         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#         print(f"Total frames in video: {total_frames}")
-
-#         frame_idx = saved_frames = empty_masks = 0
-#         with tqdm(total=total_frames // frame_stride, desc="Processing Frames", unit="frame") as pbar:
-#             while True:
-#                 ret, frame = cap.read()
-#                 if not ret:
-#                     break
-#                 if frame_idx % frame_stride != 0:
-#                     frame_idx += 1
-#                     continue
-
-#                 frame_resized = resize_frame(frame, infer_cfg)
-#                 mask, stats = model_infer_real(
-#                     model, frame_resized,
-#                     debug_save_dir=output_path / "threshold_debug",
-#                     frame_idx=frame_idx,
-#                     min_area=min_area,
-#                     suppress_bottom=suppress_bottom
-#                 )
-
-#                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#                 h, w = frame.shape[:2]
-#                 bbox = (int(w * 0.25), int(h * 0.2), int(w * 0.75), int(h * 0.9))
-#                 sam_mask = sam_wrapper.segment_with_box(frame_rgb, bbox)
-#                 sam_mask_resized = cv2.resize(sam_mask, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-#                 fused_mask = cv2.bitwise_and(mask, sam_mask_resized)
-
-#                 mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-
-#                 csv_writer.writerow([
-#                     frame_idx, stats["mean"], stats["max"], stats["min"],
-#                     stats["adaptive_thresh"], stats["mask_area"]
-#                 ])
-
-#                 if mask.sum() > 0:
-#                     save_mask_and_frame(
-#                         frame, mask_resized, str(output_path), frame_idx,
-#                         save_overlay=output_cfg.get("save_overlay", False),
-#                         overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-#                         save_frames=output_cfg.get("save_frames", False),
-#                         save_composite=True
-#                     )
-#                     saved_frames += 1
-#                 else:
-#                     empty_masks += 1
-#                     if empty_masks <= 3:
-#                         print(f"Frame {frame_idx}: Mask is empty.")
-#                 frame_idx += 1
-#                 pbar.update(1)
-
-#         cap.release()
-
-#     print(f"\nFinished processing {frame_idx} frames.")
-#     print(f"Masks saved: {saved_frames}")
-#     print(f"Empty masks: {empty_masks}")
-#     print(f"Debug stats written to: {debug_csv_path}")
-#     print(f"Output written to: {output_path}")
-
-# if __name__ == "__main__":
-#     if len(sys.argv) != 4:
-#         print("Usage: python tsp_sam_runner.py <input_video> <output_base_dir> <config_path>")
-#         sys.exit(1)
-
-#     input_path = sys.argv[1]
-#     output_base = sys.argv[2]
-#     config_path = sys.argv[3]
-#     run_tsp_sam(input_path, output_base, config_path)
-
 
 # python temporal/tsp_sam_runner.py input/ted/video1.mp4 output/tsp_sam/ted configs/tsp_sam_ted.yaml
 
@@ -697,7 +15,6 @@ import csv
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
 
-# Add paths
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.append(os.path.abspath("tsp_sam"))
 sys.path.append(os.path.abspath("temporal"))
@@ -707,28 +24,16 @@ from utils import save_mask_and_frame, resize_frame
 from maskanyone_sam_wrapper import MaskAnyoneSAMWrapper
 
 
-# def extract_bbox_from_mask(mask, margin_ratio=0.05):
-#     """
-#     Extract bounding box [x1, y1, x2, y2] from a binary mask.
-#     Adds a margin for safety unless suppressed.
-#     """
-#     ys, xs = np.where(mask > 0)
-#     if len(xs) == 0 or len(ys) == 0:
-#         return None  # Empty mask, cannot compute bbox
-
-#     x1, x2 = np.min(xs), np.max(xs)
-#     y1, y2 = np.min(ys), np.max(ys)
-
-#     h, w = mask.shape
-#     margin_x = int((x2 - x1) * margin_ratio)
-#     margin_y = int((y2 - y1) * margin_ratio)
-
-#     x1 = max(x1 - margin_x, 0)
-#     y1 = max(y1 - margin_y, 0)
-#     x2 = min(x2 + margin_x, w)
-#     y2 = min(y2 + margin_y, h)
-
-#     return [x1, y1, x2, y2]
+def post_process_fused_mask(fused_mask, min_area=500, kernel_size=5):
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    cleaned = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
+    closed = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filtered = np.zeros_like(closed)
+    for cnt in contours:
+        if cv2.contourArea(cnt) > min_area:
+            cv2.drawContours(filtered, [cnt], -1, 255, -1)
+    return cv2.dilate(filtered, kernel, iterations=1)
 
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
@@ -747,6 +52,7 @@ def extract_bbox_from_mask(mask, margin_ratio=0.05):
 
 def get_adaptive_threshold(prob_np, percentile=95):
     return np.percentile(prob_np.flatten(), percentile)
+
 
 def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area=750, suppress_bottom=False):
     image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -767,17 +73,11 @@ def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area
         prob = torch.sigmoid(output).cpu().numpy()
 
     adaptive_thresh = get_adaptive_threshold(prob, percentile=95)
-    print(f"Mean prob: {prob.mean():.4f}, Thresh: {adaptive_thresh:.4f}")
     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
-
     mask_denoised = median_filter(raw_mask, size=3)
     kernel = np.ones((5, 5), np.uint8)
     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
     mask_cleaned = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel)
-    
-    
-    
-   
 
     if suppress_bottom:
         h = mask_cleaned.shape[0]
@@ -785,15 +85,11 @@ def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area
 
     num_pixels = np.sum(mask_cleaned)
     final_mask = mask_cleaned * 255 if num_pixels >= min_area else np.zeros_like(mask_cleaned, dtype=np.uint8)
-    
 
     stats = {
         "mean": float(prob.mean()), "max": float(prob.max()), "min": float(prob.min()),
         "adaptive_thresh": float(adaptive_thresh), "mask_area": int(num_pixels)
     }
-
-    print(f"[DEBUG] Frame {frame_idx} — mean: {stats['mean']:.4f}, max: {stats['max']:.4f}, "
-          f"min: {stats['min']:.4f}, thresh: {adaptive_thresh:.4f}, area: {num_pixels}")
 
     if debug_save_dir and frame_idx is not None:
         os.makedirs(debug_save_dir, exist_ok=True)
@@ -805,10 +101,9 @@ def model_infer_real(model, frame, debug_save_dir=None, frame_idx=None, min_area
         plt.title(f"Pixel Probabilities (frame {frame_idx})")
         plt.savefig(os.path.join(debug_save_dir, f"{frame_idx:05d}_hist.png"))
         plt.close()
-        
- 
 
     return final_mask, stats
+
 
 def run_tsp_sam(input_path, output_path_base, config_path):
     print("Loading configuration...")
@@ -822,8 +117,7 @@ def run_tsp_sam(input_path, output_path_base, config_path):
     min_area = infer_cfg.get("min_area", 400)
     suppress_bottom = infer_cfg.get("suppress_bottom_text", False)
 
-    class Opt:
-        pass
+    class Opt: pass
 
     opt = Opt()
     opt.resume = model_cfg["checkpoint_path"]
@@ -838,11 +132,7 @@ def run_tsp_sam(input_path, output_path_base, config_path):
 
     print(f"Loading weights from: {opt.resume}")
     pretrained_weights = torch.load(opt.resume, map_location=opt.device)
-    result = model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
-    print("Weights loaded.")
-    if isinstance(result, dict):
-        print("   - Missing keys:", result.get("missing_keys", []))
-        print("   - Unexpected keys:", result.get("unexpected_keys", []))
+    model.module.feat_net.pvtv2_en.load_state_dict(pretrained_weights, strict=False)
 
     sam_wrapper = MaskAnyoneSAMWrapper()
 
@@ -875,8 +165,12 @@ def run_tsp_sam(input_path, output_path_base, config_path):
                 if frame_idx % frame_stride != 0:
                     frame_idx += 1
                     continue
+                
+                print(f"\n[FRAME {frame_idx}] Processing...")
 
                 frame_resized = resize_frame(frame, infer_cfg)
+                print(f"[DEBUG] Resized frame to: {frame_resized.shape}")
+
                 mask, stats = model_infer_real(
                     model, frame_resized,
                     debug_save_dir=output_path / "threshold_debug",
@@ -886,63 +180,46 @@ def run_tsp_sam(input_path, output_path_base, config_path):
                 )
                 
                 
-                print(f"Frame {frame_idx}: mask sum = {mask.sum()}, adaptive_thresh = {stats['adaptive_thresh']:.4f}")
+                print(f"[DEBUG] TSP Mask stats: mean={stats['mean']:.4f}, "
+                      f"max={stats['max']:.4f}, min={stats['min']:.4f}, "
+                      f"threshold={stats['adaptive_thresh']:.4f}, area={stats['mask_area']}")
+                
 
-                
-                
-                
-
-                # frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                # h, w = frame.shape[:2]
-               
-                
-                # print(f"[INFO] Frame {frame_idx}: frame size = {w}x{h}, bbox = {bbox}")
-                # bbox = [int(w * 0.25), int(h * 0.2), int(w * 0.75), int(h * 0.9)]
-                # sam_mask = sam_wrapper.segment_with_box(frame_rgb, bbox)
-                
-                
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w = frame.shape[:2]
-             
-        
-                
-                # bbox = [int(w * 0.25), int(h * 0.2), int(w * 0.75), int(h * 0.9)]
-                
-                
+
                 bbox = extract_bbox_from_mask(mask)
                 if bbox is None:
                     print(f"[WARN] Frame {frame_idx}: No valid bbox extracted from TSP mask. Skipping SAM.")
                     sam_mask = np.zeros_like(mask, dtype=np.uint8)
                 else:
-                    print(f"[INFO] Frame {frame_idx}: frame size = {w}x{h}, bbox = {bbox}")
                     bbox_str = str(bbox).replace(" ", "")
+                    print(f"[INFO] Extracted BBox for SAM: {bbox_str}")
                     sam_mask = sam_wrapper.segment_with_box(frame_rgb, bbox_str)
 
-  
                 sam_mask_resized = cv2.resize(sam_mask, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-                print(f"Frame {frame_idx}: SAM mask unique values = {np.unique(sam_mask_resized)}")
+                print(f"[DEBUG] SAM mask unique values: {np.unique(sam_mask_resized)}")
 
-                # fused_mask = cv2.bitwise_and(mask, sam_mask_resized)
                 fused_mask = cv2.bitwise_or(mask // 255, sam_mask_resized // 255) * 255
+                print(f"[DEBUG] Pre-postprocess fused mask sum: {np.sum(fused_mask)}")
 
+                fused_mask = post_process_fused_mask(fused_mask)
+                print(f"[DEBUG] Post-processed fused mask sum: {np.sum(fused_mask)}")
 
-                # mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
                 mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-
 
                 csv_writer.writerow([
                     frame_idx, stats["mean"], stats["max"], stats["min"],
                     stats["adaptive_thresh"], stats["mask_area"]
                 ])
-                
+
                 cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_tsp_only_mask.png", mask)
                 cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_sam_only_mask.png", sam_mask_resized)
                 cv2.imwrite(f"{output_path}/debug/frame_{frame_idx:05d}_fused_mask.png", fused_mask)
 
-
-
-                # if fused_mask.sum() > 0:
                 if mask.sum() > 0 or sam_mask_resized.sum() > 0:
+                    print(f"[SAVE] Saving mask + overlays for frame {frame_idx}")
+
                     save_mask_and_frame(
                         frame, mask_resized, str(output_path), frame_idx,
                         save_overlay=output_cfg.get("save_overlay", False),
@@ -952,6 +229,7 @@ def run_tsp_sam(input_path, output_path_base, config_path):
                     )
                     saved_frames += 1
                 else:
+                    print(f"[INFO] Empty mask — skipping save")
                     empty_masks += 1
                     if empty_masks <= 3:
                         print(f"Frame {frame_idx}: Mask is empty.")
@@ -965,6 +243,7 @@ def run_tsp_sam(input_path, output_path_base, config_path):
     print(f"Empty masks: {empty_masks}")
     print(f"Debug stats written to: {debug_csv_path}")
     print(f"Output written to: {output_path}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:

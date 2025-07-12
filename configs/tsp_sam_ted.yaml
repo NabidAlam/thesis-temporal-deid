@@ -4,8 +4,8 @@ model:
   channel: 32
 
 inference:
-  frame_stride: 2
-  min_area: 750
+  frame_stride: 6
+  min_area: 400
   suppress_bottom_text: true
 
 output:
@@ -16,5 +16,6 @@ output:
 # New additions
 compare_sam: true
 fusion_method: "union"
-sam_checkpoint: "checkpoints/sam_vit_b.pth"
+# sam_checkpoint: "checkpoints/sam_vit_b.pth"
+sam_checkpoint: "temporal/checkpoints/sam_vit_b_01ec64.pth"
 sam_model_type: "vit_b"
