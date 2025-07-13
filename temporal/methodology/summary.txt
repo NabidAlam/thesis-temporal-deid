@@ -1,0 +1,87 @@
+TSP-SAM Runner: Summary of Improvements
+
+1. Dynamic Kernel Size (`get_dynamic_kernel_size`)
+
+   * Automatically adjusts morphological operation kernel size based on resolution.
+   * Prevents over-smoothing for low-res frames and under-smoothing for high-res ones.
+   * Used inside `post_process_fused_mask()`.
+
+2. Dynamic Pose Threshold (`dynamic_pose_thresh`)
+
+   * Warm-up phase over the first 50 frames computes a percentile-based threshold for acceptable pose mask area.
+   * Helps filter out unreliable or noisy pose masks.
+   * Applied in both normal and DAVIS runners.
+
+3. Early Exit for Empty Masks
+
+   * Frame is skipped if all three masks (TSP-SAM, SAM, Pose) are empty.
+   * Improves efficiency and avoids storing meaningless outputs.
+
+4. Argparse CLI Interface
+
+   * Replaced `sys.argv` parsing with `argparse`.
+   * Adds `--force` flag for automatic output directory cleanup if already exists.
+
+
+DAVIS-Specific Adjustments
+
+1. Input Format
+
+   * Expects folder of `.jpg` frames (one folder per video).
+   * Uses `sorted(Path(input_path).glob("*.jpg"))` to load frames.
+
+2. Config Adjustments (Baseline-Friendly)
+
+   * `min_area`: 100 (lower threshold to preserve small masks).
+   * `adaptive_percentile`: 98 (stricter binarization).
+   * `pose_min_area`: 1 (no filtering on pose area).
+   * `fusion_method`: "tsp\_only" (no fusion for baseline).
+   * `compare_sam`: false (avoids invoking SAM if not needed).
+
+3. Fused Mask Postprocessing
+
+   * `post_process_fused_mask()` applies dynamic kernel based on frame size.
+   * Ensures consistent quality regardless of resolution.
+
+
+Output Files
+
+* `debug_stats.csv`: Per-frame statistics (mean, max, thresholds, area sizes).
+* `pose_keypoints.json`: Keypoints per frame.
+* `processing_complete.txt`: Final status flag.
+* Optional debug directories: `tsp_thresh`, `pose_debug`, `composite`, `overlay`.
+
+
+Recommended DAVIS Videos for Evaluation
+
+Use only human-activity clips (good for pose and motion consistency):
+
+* boxing-fisheye
+* judo
+* tennis
+* dancing-twirl
+* walking
+* parkour
+* freerun
+* kid-football
+
+Avoid animal/object-heavy sequences like:
+
+* camel
+* bear
+* bus
+* car-roundabout
+* boat
+
+
+Next Steps
+
+* Run on DAVIS with above human-focused sequences.
+* Add segmentation metric evaluation (e.g. mIoU, pixel accuracy).
+* Set up reproducible config variants for:
+
+  * TSP only
+  * TSP + SAM
+  * TSP + Pose
+  * TSP + SAM + Pose
+

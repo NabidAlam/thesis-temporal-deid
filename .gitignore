@@ -1,3 +1,8 @@
+# Ignore DAVIS evaluation repo
+davis2017-evaluation/
+input/davis2017/JPEGImages/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -47,3 +52,6 @@ venv/
 
 # Git submodules lock file
 .gitmodules
+
+
+
