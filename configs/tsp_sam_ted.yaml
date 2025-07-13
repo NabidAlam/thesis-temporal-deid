@@ -59,12 +59,13 @@ model:
 # Inference settings
 # -------------------------
 inference:
-  frame_stride: 2
+  frame_stride: 1
   min_area: 800
   suppress_bottom_text: true
   dynamic_kernel_divisor: 80
   adaptive_percentile: 95
   temporal_smoothing: true
+  reset_memory_every: 30
 
   # NEW: Pose filtering control
   min_keypoints: 8                    # Skip weak OpenPose results
@@ -110,3 +111,8 @@ debug:
 fusion:
   enable_sam: true
   enable_pose: true
+
+
+model:
+  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
+  backbone_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth

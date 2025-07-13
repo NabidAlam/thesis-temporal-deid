@@ -18,6 +18,7 @@
 # - Optional temporal smoothing with rolling mask memory
 # - Connected component analysis for evaluating segmentation stability
 # - Full DAVIS and TED dataset support (video or folder input)
+# - Added reset_memory_every to reset mask memory periodically
 # - Output:
 #     • Binary masks
 #     • Overlay images
@@ -106,9 +107,6 @@ def post_process_fused_mask(fused_mask, min_area=100, kernel_size=None):
         if cv2.contourArea(cnt) >= min_area:
             cv2.drawContours(filtered, [cnt], -1, 255, -1)
     return cv2.dilate(filtered, kernel, iterations=1)
-
-
-
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -210,6 +208,8 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     use_sam = enable_sam and fusion_method in ("sam_only", "union", "tsp+sam")
     use_pose = enable_pose and dataset_mode != "davis" and fusion_method in ("pose_only", "union", "tsp+pose")
     temporal_smoothing = infer_cfg.get("temporal_smoothing", False)
+    reset_memory_every = infer_cfg.get("reset_memory_every", None)
+
 
     # Load model
     opt = type("opt", (object,), {})()
@@ -290,6 +290,11 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
         with tqdm(total=total_frames // frame_stride) as pbar:
             for idx, frame_data in frame_iter:
+                
+                if temporal_smoothing and reset_memory_every and idx % reset_memory_every == 0:
+                    print(f"[DEBUG] Resetting memory at frame {idx}")
+                    mask_memory.clear()
+                
                 if idx % frame_stride != 0:
                     continue
 
