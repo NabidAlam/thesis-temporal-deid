@@ -1,37 +1,105 @@
+# # -------------------------
+# # Model Configuration
+# # -------------------------
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
+#   device: cuda
+#   channel: 32
+
+# # -------------------------
+# # Inference Settings
+# # -------------------------
+# inference:
+#   frame_stride: 1                     # Use stride=1 for DAVIS accuracy
+#   adaptive_percentile: 98            # Stricter thresholding for clean masks
+#   min_area: 1000                     # Recommended for DAVIS-quality masks
+#   suppress_bottom_text: true         # DAVIS has subtitles, useful to suppress
+#   dynamic_kernel_divisor: 100        # Enables adaptive kernel sizing
+
+# # -------------------------
+# # Output Control
+# # -------------------------
+# output:
+#   save_overlay: true
+#   overlay_alpha: 0.5
+#   save_frames: false                 # Only needed for debugging
+
+# # -------------------------
+# # SAM Fusion Settings
+# # -------------------------
+# compare_sam: false                   # For DAVIS baseline: only TSP-SAM
+# fusion_method: "tsp_only"           # No SAM, no Pose—pure TSP-SAM for reproducibility
+
+# # -------------------------
+# # SAM Checkpoint Info
+# # -------------------------
+# sam_checkpoint: temporal/checkpoints/sam_vit_b_01ec64.pth
+# sam_model_type: vit_b
+
+# dataset:
+#   mode: davis
+
+# debug:
+#   save_csv: true 
+
+# fusion:
+#   enable_sam: true
+#   enable_pose: true       # <-- Add this
+
 # -------------------------
 # Model Configuration
 # -------------------------
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
-  device: cuda
-  channel: 32
+  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
+  device: cuda                                                   # Use 'cuda' or 'cpu'
+  channel: 32                                                    # Model feature channels
 
 # -------------------------
 # Inference Settings
 # -------------------------
 inference:
   frame_stride: 1                     # Use stride=1 for DAVIS accuracy
-  adaptive_percentile: 98            # Stricter thresholding for clean masks
-  min_area: 1500                     # Recommended for DAVIS-quality masks
-  suppress_bottom_text: true         # DAVIS has subtitles, useful to suppress
-  dynamic_kernel_divisor: 100        # Enables adaptive kernel sizing
+  adaptive_percentile: 98            # Strict thresholding to get clean binary masks
+  min_area: 1000                     # Lowered to keep small object masks (e.g. person in bus)
+  suppress_bottom_text: true         # Zero out bottom region to suppress overlays/subtitles
+  dynamic_kernel_divisor: 100        # Enables adaptive morphological kernel sizing
+  temporal_smoothing: true           # Enables memory-based mask smoothing
 
 # -------------------------
 # Output Control
 # -------------------------
 output:
-  save_overlay: true
-  overlay_alpha: 0.5
-  save_frames: false                 # Only needed for debugging
+  save_overlay: true                 # Save overlayed frame+mask image
+  overlay_alpha: 0.5                 # Transparency for overlay
+  save_frames: false                 # Only save raw frames if debugging
 
 # -------------------------
 # SAM Fusion Settings
 # -------------------------
-compare_sam: false                   # For DAVIS baseline: only TSP-SAM
-fusion_method: "tsp_only"           # No SAM, no Pose—pure TSP-SAM for reproducibility
+compare_sam: false                   # No SAM fusion for DAVIS baseline
+fusion_method: "tsp_only"           # Pure TSP-SAM output (no fusion with SAM or pose)
 
 # -------------------------
 # SAM Checkpoint Info
 # -------------------------
-sam_checkpoint: temporal/checkpoints/sam_vit_b_01ec64.pth
-sam_model_type: vit_b
+sam_checkpoint: temporal/checkpoints/sam_vit_b_01ec64.pth  # Pretrained SAM weights
+sam_model_type: vit_b                                      # SAM variant: vit_b / vit_l / vit_h
+
+# -------------------------
+# Dataset Mode
+# -------------------------
+dataset:
+  mode: davis                     # Triggers DAVIS-specific logic (image folders, no pose)
+
+# -------------------------
+# Debug / Evaluation Flags
+# -------------------------
+debug:
+  save_csv: true                  # Save stats like mask area, threshold, etc.
+
+# -------------------------
+# Fusion Control (not used for DAVIS, but declared)
+# -------------------------
+fusion:
+  enable_sam: true
+  enable_pose: true              # Pose not used in DAVIS mode, safe to keep for consistency

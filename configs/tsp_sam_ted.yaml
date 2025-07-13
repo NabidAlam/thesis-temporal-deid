@@ -1,38 +1,112 @@
+# # -------------------------
+# # Model configuration
+# # -------------------------
+# model:
+#   checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
+#   device: cuda                                                   # Use 'cuda' or 'cpu'
+#   channel: 32                                                    # Number of channels for TSP-SAM (default)
+
+# # -------------------------
+# # Inference settings
+# # -------------------------
+# inference:
+#   frame_stride: 2                    # Process every frame for TED talk
+#   min_area: 1000                    # Lowered minimum area to reduce filtering of valid masks
+#   suppress_bottom_text: true         # Zero out bottom 10% of mask to remove subtitles/watermarks
+#   dynamic_kernel_divisor: 100       # Dynamic kernel size based on mask resolution
+#   adaptive_percentile: 96           # Slightly relaxed threshold to allow more true positives
+
+# # -------------------------
+# # Output control
+# # -------------------------
+# output:
+#   save_overlay: true                # Save composite overlay images
+#   overlay_alpha: 0.5                # Transparency for overlay
+#   save_frames: true                 # Save raw frames alongside outputs
+
+# # -------------------------
+# # SAM-related config (for fusion with TSP-SAM)
+# # -------------------------
+# compare_sam: true                   # Use bounding box from TSP-SAM to prompt SAM
+# fusion_method: "union"             # Mask fusion strategy: "union", "intersection", or "tsp_only"
+
+# # -------------------------
+# # SAM Checkpoint Info
+# # -------------------------
+# sam_checkpoint: "temporal/checkpoints/sam_vit_b_01ec64.pth"  # Pretrained SAM checkpoint
+# sam_model_type: "vit_b"                                      # SAM backbone: vit_b / vit_l / vit_h
+
+# # -------------------------
+# # Dataset mode
+# # -------------------------
+# dataset:
+#   mode: ted
+
+# fusion:
+#   enable_sam: true
+#   enable_pose: true       # <-- Add this
+
+
 # -------------------------
 # Model configuration
 # -------------------------
 model:
   checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
   device: cuda                                                   # Use 'cuda' or 'cpu'
-  channel: 32                                                    # Number of channels for TSP-SAM (default)
+  channel: 32                                                    # Default TSP-SAM channels
 
 # -------------------------
 # Inference settings
 # -------------------------
 inference:
-  frame_stride: 3                    # Process every 6th frame
-  min_area: 1500                      # Minimum pixel area for a valid mask
-  suppress_bottom_text: true         # Zero out bottom 10% of mask to remove subtitles/watermarks
-  dynamic_kernel_divisor: 100       # Dynamic kernel size based on mask area newly added
-  adaptive_percentile: 96         # Percentile for adaptive thresholding (default 96) newly added
+  frame_stride: 2
+  min_area: 800
+  suppress_bottom_text: true
+  dynamic_kernel_divisor: 80
+  adaptive_percentile: 95
+  temporal_smoothing: true
+
+  # NEW: Pose filtering control
+  min_keypoints: 8                    # Skip weak OpenPose results
+  relaxation_factor: 0.4             # More relaxed for vertical frames
+  pose_thresh_percentile: 10         # Use lower percentile (more inclusive)
+  max_dynamic_thresh: 160000         # NEW: cap threshold to not exceed full-body limits
 
 # -------------------------
 # Output control
 # -------------------------
 output:
-  save_overlay: true                # Save composite overlay images
-  overlay_alpha: 0.5                # Transparency for overlay
-  save_frames: true                 # Save raw frames alongside outputs
+  save_overlay: true
+  overlay_alpha: 0.5
+  save_frames: true
 
 # -------------------------
 # SAM-related config (for fusion with TSP-SAM)
 # -------------------------
-compare_sam: true                   # If true, SAM will be invoked with bounding box from TSP-SAM
-fusion_method: "union"             # Mask fusion strategy: "union", "intersection", or "tsp_only"
+compare_sam: true
+fusion_method: "union"             # TSP + SAM + Pose union fusion
 
 # -------------------------
 # SAM Checkpoint Info
 # -------------------------
-sam_checkpoint: "temporal/checkpoints/sam_vit_b_01ec64.pth"  # Pretrained SAM checkpoint
-sam_model_type: "vit_b"                                      # SAM backbone: vit_b / vit_l / vit_h
-# Source: https://github.com/facebookresearch/segment-anything?tab=readme-ov-file
+sam_checkpoint: "temporal/checkpoints/sam_vit_b_01ec64.pth"
+sam_model_type: "vit_b"
+
+# -------------------------
+# Dataset mode
+# -------------------------
+dataset:
+  mode: ted
+
+# -------------------------
+# Debugging & Evaluation
+# -------------------------
+debug:
+  save_csv: true
+
+# -------------------------
+# Fusion Control
+# -------------------------
+fusion:
+  enable_sam: true
+  enable_pose: true
