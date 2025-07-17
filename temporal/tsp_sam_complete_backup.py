@@ -8,13 +8,16 @@
 #
 # Features:
 # - Frame-wise mask prediction with dynamic adaptive thresholding
-# - Morphological post-processing with contour filtering
-# - Optional pose- or SAM-enhanced mask fusion
+# - Morphological post-processing with contour filtering and dilation
+# - Fusion logic configurable via YAML: "tsp_only", "union", "intersection", "pose_only"
+# - Pose keypoint integration enabled for TED, skipped for DAVIS
+# - Flexible SAM and pose usage control for reproducibility benchmarking
 # - TED and DAVIS dataset support
-# - Overlay, raw, composite image output + CSV logging
+# - Overlay, raw, composite image output + CSV logging (debug_stats.csv)
 #
 # Usage:
 # python temporal/tsp_sam_complete.py <input_path> <output_dir> <config.yaml> [--force]
+
 
 # python temporal/tsp_sam_complete.py input/davis2017/JPEGImages/480p/kid-football output/tsp_sam/davis configs/tsp_sam_davis.yaml --force
 # python temporal/tsp_sam_complete.py input/ted/video1.mp4 output/tsp_sam/ted configs/tsp_sam_ted.yaml --force
@@ -549,7 +552,12 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
                 frame_resized = resize_frame(frame, infer_cfg)
                 rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-                tsp_mask, stats = model_infer_real(model, frame_resized, infer_cfg)
+                # tsp_mask, stats = model_infer_real(model, frame_resized, infer_cfg)
+                tsp_mask, stats = model_infer_real(
+                    model, frame_resized, infer_cfg, 
+                    debug_save_dir=output_path / "tsp_thresh", 
+                    frame_idx=idx)
+
 
                 sam_mask = np.zeros_like(tsp_mask)
                 pose_mask = np.zeros_like(tsp_mask)
@@ -607,7 +615,7 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
     if dataset_mode != "davis":
         cap.release()
-    print(f"\n[✓] Done. Results saved to: {output_path}")
+    print(f"\nDone. Results saved to: {output_path}")
 
 
 if __name__ == "__main__":

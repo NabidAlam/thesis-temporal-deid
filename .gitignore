@@ -1,6 +1,7 @@
 # Ignore DAVIS evaluation repo
 davis2017-evaluation/
-input/davis2017/JPEGImages/
+# input/davis2017/JPEGImages/
+input/
 
 
 # Byte-compiled / optimized / DLL files

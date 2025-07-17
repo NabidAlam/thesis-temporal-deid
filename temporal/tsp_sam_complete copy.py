@@ -107,9 +107,6 @@ def post_process_fused_mask(fused_mask, min_area=100, kernel_size=None):
             cv2.drawContours(filtered, [cnt], -1, 255, -1)
     return cv2.dilate(filtered, kernel, iterations=1)
 
-
-
-
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:

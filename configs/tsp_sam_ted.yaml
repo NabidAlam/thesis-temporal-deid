@@ -68,9 +68,9 @@ inference:
   reset_memory_every: 30
 
   # NEW: Pose filtering control
-  min_keypoints: 8                    # Skip weak OpenPose results
+  min_keypoints: 10                   # Skip weak OpenPose results 8
   relaxation_factor: 0.4             # More relaxed for vertical frames
-  pose_thresh_percentile: 10         # Use lower percentile (more inclusive)
+  pose_thresh_percentile: 20        # Use lower percentile (more inclusive) 10
   max_dynamic_thresh: 160000         # NEW: cap threshold to not exceed full-body limits
 
 # -------------------------
@@ -85,7 +85,8 @@ output:
 # SAM-related config (for fusion with TSP-SAM)
 # -------------------------
 compare_sam: true
-fusion_method: "union"             # TSP + SAM + Pose union fusion
+# fusion_method: "union"             # TSP + SAM + Pose union fusion
+fusion_method: "tsp+pose"  # More conservative
 
 # -------------------------
 # SAM Checkpoint Info
@@ -116,3 +117,10 @@ fusion:
 model:
   checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
   backbone_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+
+
+postprocess:
+  min_area: 1500
+  large_area_threshold: 50000
+  min_extent: 0.15
+  dilation_iters: 1

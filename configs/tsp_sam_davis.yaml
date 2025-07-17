@@ -57,13 +57,22 @@ model:
 # -------------------------
 # Inference Settings
 # -------------------------
+# inference:
+#   frame_stride: 1                     # Use stride=1 for DAVIS accuracy
+#   adaptive_percentile: 98            # Strict thresholding to get clean binary masks
+#   min_area: 1000                     # Lowered to keep small object masks (e.g. person in bus)
+#   suppress_bottom_text: true         # Zero out bottom region to suppress overlays/subtitles
+#   dynamic_kernel_divisor: 100        # Enables adaptive morphological kernel sizing
+#   temporal_smoothing: true           # Enables memory-based mask smoothing
+
 inference:
-  frame_stride: 1                     # Use stride=1 for DAVIS accuracy
-  adaptive_percentile: 98            # Strict thresholding to get clean binary masks
-  min_area: 1000                     # Lowered to keep small object masks (e.g. person in bus)
-  suppress_bottom_text: true         # Zero out bottom region to suppress overlays/subtitles
-  dynamic_kernel_divisor: 100        # Enables adaptive morphological kernel sizing
-  temporal_smoothing: true           # Enables memory-based mask smoothing
+  frame_stride: 1
+  min_area: 1500         # lower to allow parts like paws, ears, tail
+  suppress_bottom_text: false
+  adaptive_percentile: 97   # more inclusive
+  dynamic_kernel_divisor: 80
+  temporal_smoothing: true
+
 
 # -------------------------
 # Output Control
@@ -103,3 +112,13 @@ debug:
 fusion:
   enable_sam: true
   enable_pose: true              # Pose not used in DAVIS mode, safe to keep for consistency
+
+
+# -------------------------
+# Post-processing Parameters (DAVIS-specific)
+# -------------------------
+postprocess:
+  min_area: 1000                 # Accept smaller valid masks (e.g., limbs, objects)
+  large_area_threshold: 40000    # Lowered large region cutoff for DAVIS
+  min_extent: 0.08               # Allow less compact masks (thin silhouettes)
+  dilation_iters: 1              # Slight dilation to recover structure
