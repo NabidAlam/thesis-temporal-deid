@@ -87,10 +87,10 @@ output:
 # SAM Fusion Settings
 # -------------------------
 compare_sam: false                   # No SAM fusion for DAVIS baseline
-# fusion_method: "tsp+pose"  
+fusion_method: "tsp+pose"  
 # fusion_method: "sam_only"         # Pure TSP-SAM output (no fusion with SAM or pose)
-fusion_method: "tsp_only"
-
+# fusion_method: "tsp_only"
+# fusion_method: tsp+sam
 # -------------------------
 # SAM Checkpoint Info
 # -------------------------
@@ -114,7 +114,7 @@ debug:
 # -------------------------
 fusion:
   enable_sam: true
-  enable_pose: true              # Pose not used in DAVIS mode, safe to keep for consistency
+  enable_pose: false              # Pose not used in DAVIS mode, safe to keep for consistency
 
 
 # -------------------------
@@ -130,15 +130,26 @@ fusion:
 #   iou_check: true
 #   border_margin: 0.05
 
+
+# postprocess:
+#   min_area: 400
+#   large_area_threshold: 50000
+#   min_extent: 0.15
+#   dilation_iters: 0
+#   use_solidity_filter: true
+#   edge_fade: true
+#   iou_check: true
+#   max_aspect_ratio: 4.5
+#   min_solidity: 0.3
+#   border_margin_pct: 0.02
+#   extent_suppression: true
+
+
 postprocess:
-  min_area: 400                 # DAVIS: allow small detailed objects (camel, dog)
-  large_area_threshold: 30000   # Lower threshold for fast-accept
-  min_extent: 0.03              # Looser extent tolerance for VOS blobs
+  min_area: 300
+  min_extent: 0.03
+  min_solidity: 0.15
+  max_aspect_ratio: 10.0
   dilation_iters: 1
-  use_solidity_filter: true
-  edge_fade: true
+  large_area_threshold: 80000
   iou_check: true
-  max_aspect_ratio: 5.0         # DAVIS: tighter AR, to suppress streaks
-  min_solidity: 0.2             # Allow deformable/motion-blur masks
-  border_margin_pct: 0.015      # DAVIS: narrow crop, no subtitle region
-  extent_suppression: true

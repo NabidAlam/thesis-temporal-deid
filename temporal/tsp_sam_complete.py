@@ -506,6 +506,8 @@ def post_process_fused_mask(
         if return_debug:
             print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")
 
+
+    
         if area >= large_area_thresh:
             filtered[label_mask] = 255
             if return_debug:
@@ -638,6 +640,28 @@ def parse_args():
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
 
+from glob import glob
+
+def load_davis_annotations(input_root, seq_name):
+    """
+    Load DAVIS ground-truth segmentation masks.
+
+    Args:
+        input_root (str or Path): Root directory of DAVIS dataset.
+        seq_name (str): Name of the sequence (e.g., "dog", "camel").
+
+    Returns:
+        Dict[str, np.ndarray]: Mapping from frame name (e.g., "00000") to grayscale annotation mask.
+    """
+    anno_dir = Path(input_root) / "Annotations" / "480p" / seq_name
+    mask_paths = sorted(anno_dir.glob("*.png"))
+
+    # Use filename stem (e.g., "00000") as key
+    masks = {p.stem: cv2.imread(str(p), cv2.IMREAD_GRAYSCALE) for p in mask_paths}
+
+    return masks
+
+
 def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     import shutil
     from collections import deque
@@ -715,9 +739,21 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
     video_name = Path(input_path).stem
     output_path = Path(output_path_base) / video_name
+    
     if output_path.exists() and force:
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
+    
+        
+    # Load DAVIS GT annotations if in DAVIS mode
+    seq_name = Path(input_path).stem
+    gt_masks = {}
+
+    if dataset_mode == "davis":
+        gt_masks = load_davis_annotations("input/davis2017", seq_name)
+        print(f"[DEBUG] Loaded {len(gt_masks)} ground-truth annotation frames for DAVIS sequence: '{seq_name}'")
+
+
 
     frame_stride = infer_cfg.get("frame_stride", 2)
     min_area = infer_cfg.get("min_area", 1500)
@@ -911,6 +947,10 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     pose_weight = 0.5 if pose_area < relaxed_thresh else 1.0
                     pose_weighted = (pose_mask.astype(np.float32) * pose_weight).astype(np.uint8)
                     fused_mask = cv2.bitwise_or(tsp_mask, pose_weighted)
+                # Save intermediate masks for debugging
+                cv2.imwrite(str(output_path / f"{idx:05d}_tsp_mask.png"), tsp_mask)
+                cv2.imwrite(str(output_path / f"{idx:05d}_sam_mask.png"), sam_mask)
+
 
 
                     
@@ -965,7 +1005,8 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 #     prev_valid_mask=prev_valid_mask
                 # )
                 
-                print(f"[PostProcess] Invoking post_process_fused_mask on frame {idx}")
+                print(f"[Fusion Debug] Frame {idx}: fusion_method={fusion_method}, tsp_area={tsp_area}, sam_area={sam_area}, pose_area={pose_area}")
+
                 
                 fused_mask, debug_vis = post_process_fused_mask(
                     fused_mask,
@@ -980,13 +1021,28 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     border_margin_pct=post_border_margin_pct,
                     use_extent_suppression=post_extent_suppression
                 )
-
+                
+  
 
                 cv2.imwrite(str(output_path / f"{idx:05d}_debug_post.png"), debug_vis)
 
-
                 fused_area = int(np.sum(fused_mask > 0))
+                
+                iou = -1  # default if not computable
+                if dataset_mode == "davis":
+                    frame_name = Path(frame_data).stem
+                    if frame_name in gt_masks:
+                        gt = (gt_masks[frame_name] > 0).astype(np.uint8)
+                        pred_resized = cv2.resize(fused_mask, (gt.shape[1], gt.shape[0]), interpolation=cv2.INTER_NEAREST)
+                        pred = (pred_resized > 0).astype(np.uint8)
+                        intersection = np.logical_and(gt, pred).sum()
+                        union = np.logical_or(gt, pred).sum()
+                        iou = intersection / (union + 1e-6)
+                        print(f"[IoU] Frame {frame_name}: IoU with GT = {iou:.3f}")
+                    else:
+                        print(f"[IoU] Frame {frame_name}: No ground-truth annotation available")
 
+                        
                 # IOU drift warning (before potential fallback, only if enabled)
                 if post_cfg.get("iou_check", False) and prev_valid_mask is not None:
                     iou = np.sum((fused_mask > 0) & (prev_valid_mask > 0)) / (np.sum((fused_mask > 0) | (prev_valid_mask > 0)) + 1e-6)
@@ -1037,10 +1093,16 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
 
                 # Log stats to CSV
+                # writer.writerow([
+                #     idx, stats['mean'], stats['max'], stats['min'], stats['adaptive_thresh'],
+                #     tsp_area, sam_area, pose_area, fused_area, max_region
+                # ])
+                
                 writer.writerow([
                     idx, stats['mean'], stats['max'], stats['min'], stats['adaptive_thresh'],
-                    tsp_area, sam_area, pose_area, fused_area, max_region
+                    tsp_area, sam_area, pose_area, fused_area, max_region, round(iou, 4)
                 ])
+
                 pbar.update(1)
 
 
