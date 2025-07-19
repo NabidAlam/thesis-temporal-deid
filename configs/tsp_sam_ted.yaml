@@ -128,10 +128,20 @@ model:
   backbone_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
 
 
+# postprocess:
+#   min_area: 1550
+#   large_area_threshold: 50000
+#   min_extent: 0.15
+#   dilation_iters: 1
+
+
 postprocess:
-  min_area: 1550
-  large_area_threshold: 50000
-  min_extent: 0.15
-  dilation_iters: 1
+  min_area: 1200                 # Accept smaller valid masks (e.g., limbs, objects)
+  large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
+  min_extent: 0.15           # Allow less compact masks (thin silhouettes)
+  dilation_iters: 1              # Slight dilation to recover structure
+  use_solidity_filter: true
+  edge_fade: true
+  iou_check: true
 
 

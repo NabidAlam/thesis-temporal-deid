@@ -121,7 +121,10 @@ fusion:
 # Post-processing Parameters (DAVIS-specific)
 # -------------------------
 postprocess:
-  min_area: 599                 # Accept smaller valid masks (e.g., limbs, objects)
-  large_area_threshold: 30000    # Lowered large region cutoff for DAVIS
-  min_extent: 0.025               # Allow less compact masks (thin silhouettes)
+  min_area: 1550                 # Accept smaller valid masks (e.g., limbs, objects)
+  large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
+  min_extent: 0.25          # Allow less compact masks (thin silhouettes)
   dilation_iters: 1              # Slight dilation to recover structure
+  use_solidity_filter: true
+  edge_fade: true
+  iou_check: true
