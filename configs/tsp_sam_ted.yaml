@@ -65,7 +65,7 @@ inference:
   dynamic_kernel_divisor: 80
   adaptive_percentile: 95
   temporal_smoothing: true
-  reset_memory_every: 30
+  reset_memory_every: 12
 
   # NEW: Pose filtering control
   min_keypoints: 10                   # Skip weak OpenPose results 8
@@ -109,9 +109,18 @@ debug:
 # -------------------------
 # Fusion Control
 # -------------------------
+# fusion:
+#   enable_sam: true
+#   enable_pose: true
+
+
 fusion:
   enable_sam: true
   enable_pose: true
+  pose_area_ratio_thresh: 10      # Filter pose if it's too large relative to TSP
+  tsp_area_min_valid: 500         # Minimum TSP area to consider pose too large
+
+
 
 
 model:
@@ -120,7 +129,9 @@ model:
 
 
 postprocess:
-  min_area: 1500
+  min_area: 1550
   large_area_threshold: 50000
   min_extent: 0.15
   dilation_iters: 1
+
+

@@ -110,17 +110,6 @@ def get_dynamic_kernel_size(mask_shape, base_divisor=100, max_kernel=15):
 #         if cv2.contourArea(cnt) >= min_area:
 #             cv2.drawContours(filtered, [cnt], -1, 255, -1)
 #     return cv2.dilate(filtered, kernel, iterations=1)
-
-def fill_mask_holes(mask):
-    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    if hierarchy is not None:
-        for i in range(len(contours)):
-            if hierarchy[0][i][3] != -1:  # has parent => it's a hole
-                cv2.drawContours(mask, contours, i, 255, -1)
-    return mask
-
-
-
 def post_process_fused_mask(
     fused_mask,
     min_area=1200,
@@ -196,9 +185,6 @@ def post_process_fused_mask(
     if np.sum(filtered) == 0 and prev_valid_mask is not None:
         print("[Fallback] Using previous valid mask due to empty post-process")
         filtered = prev_valid_mask.copy()
-    
-    # Fill holes before final dilation
-    filtered = fill_mask_holes(filtered)
 
     if dilation_iters > 0:
         filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)

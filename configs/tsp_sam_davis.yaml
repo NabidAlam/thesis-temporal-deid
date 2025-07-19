@@ -67,11 +67,12 @@ model:
 
 inference:
   frame_stride: 1
-  min_area: 1500         # lower to allow parts like paws, ears, tail
-  suppress_bottom_text: false
-  adaptive_percentile: 97   # more inclusive
+  min_area: 400         # lower to allow parts like paws, ears, tail
+  suppress_bottom_text: true
+  adaptive_percentile: 96   # more inclusive
   dynamic_kernel_divisor: 80
   temporal_smoothing: true
+  reset_memory_every: 8
 
 
 # -------------------------
@@ -86,7 +87,9 @@ output:
 # SAM Fusion Settings
 # -------------------------
 compare_sam: false                   # No SAM fusion for DAVIS baseline
-fusion_method: "tsp_only"           # Pure TSP-SAM output (no fusion with SAM or pose)
+# fusion_method: "tsp+pose"  
+# fusion_method: "sam_only"         # Pure TSP-SAM output (no fusion with SAM or pose)
+fusion_method: "tsp_only"
 
 # -------------------------
 # SAM Checkpoint Info
@@ -118,7 +121,7 @@ fusion:
 # Post-processing Parameters (DAVIS-specific)
 # -------------------------
 postprocess:
-  min_area: 1000                 # Accept smaller valid masks (e.g., limbs, objects)
-  large_area_threshold: 40000    # Lowered large region cutoff for DAVIS
-  min_extent: 0.08               # Allow less compact masks (thin silhouettes)
+  min_area: 599                 # Accept smaller valid masks (e.g., limbs, objects)
+  large_area_threshold: 30000    # Lowered large region cutoff for DAVIS
+  min_extent: 0.025               # Allow less compact masks (thin silhouettes)
   dilation_iters: 1              # Slight dilation to recover structure

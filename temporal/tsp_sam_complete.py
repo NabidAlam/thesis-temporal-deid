@@ -121,6 +121,100 @@ def fill_mask_holes(mask):
 
 
 
+# def post_process_fused_mask(
+#     fused_mask,
+#     min_area=1200,
+#     kernel_size=None,
+#     dilation_iters=1,
+#     return_debug=False,
+#     large_area_thresh=50000,
+#     min_extent=0.15,
+#     prev_valid_mask=None
+# ):
+#     if kernel_size is None:
+#         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
+
+#     # Ensure 0–255 uint8 binary
+#     if fused_mask.max() == 1:
+#         fused_mask = (fused_mask * 255).astype(np.uint8)
+#     else:
+#         fused_mask = fused_mask.astype(np.uint8)
+
+#     # Morphological cleaning
+#     kernel = np.ones((kernel_size, kernel_size), np.uint8)
+#     opened = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
+#     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+
+#     # Component filtering
+#     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+#     filtered = np.zeros_like(closed)
+#     debug_vis = np.zeros((*fused_mask.shape, 3), dtype=np.uint8)
+
+#     h_img, w_img = fused_mask.shape
+#     border_margin = 10
+
+#     for i in range(1, num_labels):  # skip background
+#         x, y, w, h, area = stats[i, :5]
+#         aspect_ratio = w / h if h > 0 else 0
+#         extent = area / (w * h + 1e-6)
+#         label_mask = (labels == i)
+
+#         if return_debug:
+#             print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")
+
+#         if area >= large_area_thresh:
+#             filtered[label_mask] = 255
+#             if return_debug:
+#                 debug_vis[label_mask] = [0, 255, 0]  # green: very large
+#         elif area >= min_area:
+#             if aspect_ratio < 3.0 and extent > min_extent and h > 15 and w > 15:
+#                 filtered[label_mask] = 255
+#                 if return_debug:
+#                     debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
+#             else:
+#                 if return_debug:
+#                     debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
+#         else:
+#             if return_debug:
+#                 debug_vis[label_mask] = [0, 0, 255]  # red: too small
+
+#         # Optional area label
+#         if return_debug:
+#             cv2.putText(
+#                 debug_vis, f"{area}", (x, y + 10),
+#                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA
+#             )
+
+#     # Remove borders and bottom subtitles
+#     filtered[:border_margin, :] = 0
+#     filtered[-border_margin:, :] = 0
+#     filtered[:, :border_margin] = 0
+#     filtered[:, -border_margin:] = 0
+#     filtered[int(0.9 * h_img):, :] = 0
+
+#     # Fallback to previous valid mask if all rejected
+#     # if np.sum(filtered) == 0 and prev_valid_mask is not None:
+#     #     print("[Fallback] Using previous valid mask due to empty post-process")
+#     #     filtered = prev_valid_mask.copy()
+#     if np.sum(filtered) == 0:
+#         print("[Warning] Empty postprocessed mask. Raw TSP or previous mask used.")
+#         if prev_valid_mask is not None:
+#             print("[Fallback] Using previous valid mask due to empty post-process")
+#             filtered = prev_valid_mask.copy()
+#         else:
+#             print("[Fallback] All regions filtered. Using raw TSP mask.")
+#             filtered = fused_mask.copy()
+
+
+    
+#     # Fill holes before final dilation
+#     filtered = fill_mask_holes(filtered)
+
+#     if dilation_iters > 0:
+#         filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)
+
+#     return (filtered, debug_vis) if return_debug else filtered
+
 def post_process_fused_mask(
     fused_mask,
     min_area=1200,
@@ -131,8 +225,25 @@ def post_process_fused_mask(
     min_extent=0.15,
     prev_valid_mask=None
 ):
+    import inspect
+    caller_locals = inspect.currentframe().f_back.f_locals
+    dataset_mode = caller_locals.get("dataset_mode", "ted").lower()
+
+    # Override for DAVIS to improve small-object recall
+    if dataset_mode == "davis":
+        print("[Override] Postprocess thresholds adjusted for DAVIS")
+        min_area = 400
+        min_extent = 0.03
+        dilation_iters = 1
+
     if kernel_size is None:
         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
+
+    # Resolution-aware scaling of area thresholds (relative to 512x512)
+    h_img, w_img = fused_mask.shape
+    scale_factor = (h_img * w_img) / (512 * 512)
+    min_area = int(min_area * scale_factor)
+    large_area_thresh = int(large_area_thresh * scale_factor)
 
     # Ensure 0–255 uint8 binary
     if fused_mask.max() == 1:
@@ -150,7 +261,6 @@ def post_process_fused_mask(
     filtered = np.zeros_like(closed)
     debug_vis = np.zeros((*fused_mask.shape, 3), dtype=np.uint8)
 
-    h_img, w_img = fused_mask.shape
     border_margin = 10
 
     for i in range(1, num_labels):  # skip background
@@ -167,13 +277,26 @@ def post_process_fused_mask(
             if return_debug:
                 debug_vis[label_mask] = [0, 255, 0]  # green: very large
         elif area >= min_area:
-            if aspect_ratio < 3.5 and extent > min_extent:
+            # Accept normal and thin blobs adaptively
+            if (
+                (extent > min_extent and aspect_ratio < 3.0 and h > 5 and w > 5)
+                or (extent > 0.015 and aspect_ratio > 2.0 and area >= min_area * 0.7)
+            ):
                 filtered[label_mask] = 255
                 if return_debug:
                     debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
             else:
                 if return_debug:
                     debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
+
+        # elif area >= min_area:
+        #     if aspect_ratio < 3.0 and extent > min_extent and h > 5 and w > 5:
+        #         filtered[label_mask] = 255
+        #         if return_debug:
+        #             debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
+        #     else:
+        #         if return_debug:
+        #             debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
         else:
             if return_debug:
                 debug_vis[label_mask] = [0, 0, 255]  # red: too small
@@ -193,10 +316,15 @@ def post_process_fused_mask(
     filtered[int(0.9 * h_img):, :] = 0
 
     # Fallback to previous valid mask if all rejected
-    if np.sum(filtered) == 0 and prev_valid_mask is not None:
-        print("[Fallback] Using previous valid mask due to empty post-process")
-        filtered = prev_valid_mask.copy()
-    
+    if np.sum(filtered) == 0:
+        print("[Warning] Empty postprocessed mask. Raw TSP or previous mask used.")
+        if prev_valid_mask is not None:
+            print("[Fallback] Using previous valid mask due to empty post-process")
+            filtered = prev_valid_mask.copy()
+        else:
+            print("[Fallback] All regions filtered. Using raw TSP mask.")
+            filtered = fused_mask.copy()
+
     # Fill holes before final dilation
     filtered = fill_mask_holes(filtered)
 
@@ -204,7 +332,6 @@ def post_process_fused_mask(
         filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)
 
     return (filtered, debug_vis) if return_debug else filtered
-
 
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
@@ -247,7 +374,7 @@ def model_infer_real(model, frame, infer_cfg, debug_save_dir=None, frame_idx=Non
     adaptive_thresh = get_adaptive_threshold(prob, percentile=percentile)
     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
     mask_denoised = median_filter(raw_mask, size=3)
-    mask_denoised = cv2.GaussianBlur(mask_denoised, (5, 5), 0)
+    mask_denoised = cv2.GaussianBlur(mask_denoised, (7, 7), 0)
 
     kernel = np.ones((5, 5), np.uint8)
     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
@@ -299,6 +426,8 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
         post_large_thresh = post_cfg.get("large_area_threshold", 50000)
         post_min_extent = post_cfg.get("min_extent", 0.15)
         post_dilation_iters = post_cfg.get("dilation_iters", 1)
+        
+        
 
         
 
@@ -306,6 +435,20 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     infer_cfg = config["inference"]
     output_cfg = config["output"]
     dataset_mode = config.get("dataset", {}).get("mode", "ted").lower()
+    
+        # --- Dataset-specific post-processing tweaks ---
+    if dataset_mode == "davis":
+        print("[CONFIG OVERRIDE] Relaxing post-process for DAVIS")
+        post_min_area = 400
+        post_min_extent = 0.05
+        post_dilation_iters = 1
+        if "reset_memory_every" not in infer_cfg:
+            infer_cfg["reset_memory_every"] = 8
+            print("[CONFIG OVERRIDE] Setting reset_memory_every = 8 for DAVIS")
+
+        
+        
+
     fusion_method = config.get("fusion_method", "tsp_only")
 
     fusion_cfg = config.get("fusion", {})
@@ -313,7 +456,11 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     enable_pose = fusion_cfg.get("enable_pose", True)
 
     use_sam = enable_sam and fusion_method in ("sam_only", "union", "tsp+sam")
-    use_pose = enable_pose and dataset_mode != "davis" and fusion_method in ("pose_only", "union", "tsp+pose")
+    # use_pose = enable_pose and dataset_mode != "davis" and fusion_method in ("pose_only", "union", "tsp+pose")
+    # use_pose = enable_pose and fusion_method in ("pose_only", "union", "tsp+pose")
+    use_pose = enable_pose and fusion_method in ("pose_only", "union", "tsp+pose") and dataset_mode != "davis"
+
+
     temporal_smoothing = infer_cfg.get("temporal_smoothing", False)
     reset_memory_every = infer_cfg.get("reset_memory_every", None)
     
@@ -456,29 +603,53 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 print(f"Frame {idx}: Dominant source = {dominant}")
 
 
-                if dataset_mode != "davis" and use_pose:
+                # if dataset_mode != "davis" and use_pose:
+                #     h, w = frame.shape[:2]
+                #     aspect_ratio = h / w
+                #     relaxed_thresh = dynamic_pose_thresh * 0.5 if aspect_ratio > 1.4 else dynamic_pose_thresh
+                #     # if pose_area < relaxed_thresh:
+                #     #     print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
+                #     #     # print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping.")
+                        
+                #     #     pbar.update(1)
+                #     #     continue
+                    
+                #     if pose_area < relaxed_thresh:
+                #         print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
+                        
+                #         # Save the skipped pose mask for inspection
+                #         skipped_pose_dir = output_path / "pose_skipped"
+                #         skipped_pose_dir.mkdir(exist_ok=True)
+                        
+                #         debug_pose = cv2.resize(pose_mask, (frame.shape[1], frame.shape[0]))
+                #         cv2.imwrite(str(skipped_pose_dir / f"{idx:05d}_pose_skipped.png"), debug_pose)
+
+                #         pbar.update(1)
+                #         continue
+                
+                if use_pose:
                     h, w = frame.shape[:2]
                     aspect_ratio = h / w
-                    relaxed_thresh = dynamic_pose_thresh * 0.5 if aspect_ratio > 1.4 else dynamic_pose_thresh
-                    # if pose_area < relaxed_thresh:
-                    #     print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
-                    #     # print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping.")
-                        
-                    #     pbar.update(1)
-                    #     continue
-                    
+
+                    # Adjust threshold based on dataset
+                    if dataset_mode == "davis":
+                        relaxed_thresh = dynamic_pose_thresh * 0.3  # Looser threshold for DAVIS (pose weaker)
+                    else:
+                        relaxed_thresh = dynamic_pose_thresh * 0.5 if aspect_ratio > 1.4 else dynamic_pose_thresh
+
                     if pose_area < relaxed_thresh:
                         print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
                         
                         # Save the skipped pose mask for inspection
                         skipped_pose_dir = output_path / "pose_skipped"
                         skipped_pose_dir.mkdir(exist_ok=True)
-                        
+
                         debug_pose = cv2.resize(pose_mask, (frame.shape[1], frame.shape[0]))
                         cv2.imwrite(str(skipped_pose_dir / f"{idx:05d}_pose_skipped.png"), debug_pose)
 
                         pbar.update(1)
                         continue
+
 
 
                 # Mask Fusion Logic
@@ -497,12 +668,26 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     fused_mask = cv2.bitwise_or(tsp_mask, sam_mask)
                 elif fusion_method == "tsp+pose":
                     fused_mask = cv2.bitwise_or(tsp_mask, pose_mask)
+                    
 
-                # Optional Temporal Smoothing
+
                 if temporal_smoothing:
-                    mask_memory.append(fused_mask.astype(np.float32))
+                    if idx < 5:
+                        # Warmup memory with first few masks to stabilize early temporal smoothing
+                        for _ in range(5):
+                            mask_memory.append(fused_mask.astype(np.float32))
+                    else:
+                        mask_memory.append(fused_mask.astype(np.float32))
+
+                    # Apply temporal smoothing
                     smoothed_mask = np.mean(mask_memory, axis=0)
                     fused_mask = (smoothed_mask > 127).astype(np.uint8) * 255
+
+                # # Optional Temporal Smoothing
+                # if temporal_smoothing:
+                #     mask_memory.append(fused_mask.astype(np.float32))
+                #     smoothed_mask = np.mean(mask_memory, axis=0)
+                #     fused_mask = (smoothed_mask > 127).astype(np.uint8) * 255
 
                 # fused_mask = post_process_fused_mask(fused_mask, min_area=min_area)
                 
@@ -544,11 +729,26 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     
                     cv2.imwrite(str(output_path / f"{idx:05d}_mask.png"), mask_resized)
 
-                    save_mask_and_frame(frame, mask_resized, str(output_path), idx,
-                                        save_overlay=output_cfg.get("save_overlay", True),
-                                        overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-                                        save_frames=output_cfg.get("save_frames", False),
-                                        save_composite=True)
+                    # save_mask_and_frame(frame, mask_resized, str(output_path), idx,
+                    #                     save_overlay=output_cfg.get("save_overlay", True),
+                    #                     overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
+                    #                     save_frames=output_cfg.get("save_frames", False),
+                    #                     save_composite=True)
+                    
+                                        # Create a blurred copy ONLY for overlay, keep original for saving mask
+                    overlay_mask = cv2.GaussianBlur(mask_resized, (7, 7), 0)
+
+                    save_mask_and_frame(
+                        frame,
+                        overlay_mask,  # blurred copy
+                        str(output_path),
+                        idx,
+                        save_overlay=output_cfg.get("save_overlay", True),
+                        overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
+                        save_frames=output_cfg.get("save_frames", False),
+                        save_composite=True
+                    )
+
 
                 writer.writerow([
                     idx, stats['mean'], stats['max'], stats['min'], stats['adaptive_thresh'],

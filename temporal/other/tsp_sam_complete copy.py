@@ -18,7 +18,6 @@
 # - Optional temporal smoothing with rolling mask memory
 # - Connected component analysis for evaluating segmentation stability
 # - Full DAVIS and TED dataset support (video or folder input)
-# - Added reset_memory_every to reset mask memory periodically
 # - Output:
 #     • Binary masks
 #     • Overlay images
@@ -93,105 +92,20 @@ def get_dynamic_kernel_size(mask_shape, base_divisor=100, max_kernel=15):
     k = k + (k % 2 == 0)
     return min(k, max_kernel)
 
-
-# def post_process_fused_mask(fused_mask, min_area=100, kernel_size=None):
-# def post_process_fused_mask(fused_mask, min_area=1200, kernel_size=None):
-#     if kernel_size is None:
-#         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
-        
-#     kernel = np.ones((kernel_size, kernel_size), np.uint8)
-    
-#     cleaned = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
-    
-#     closed = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
-#     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-#     filtered = np.zeros_like(closed)
-#     for cnt in contours:
-#         if cv2.contourArea(cnt) >= min_area:
-#             cv2.drawContours(filtered, [cnt], -1, 255, -1)
-#     return cv2.dilate(filtered, kernel, iterations=1)
-def post_process_fused_mask(
-    fused_mask,
-    min_area=1200,
-    kernel_size=None,
-    dilation_iters=1,
-    return_debug=False,
-    large_area_thresh=50000,
-    min_extent=0.15,
-    prev_valid_mask=None
-):
+def post_process_fused_mask(fused_mask, min_area=100, kernel_size=None):
     if kernel_size is None:
         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
-
-    # Ensure 0–255 uint8 binary
-    if fused_mask.max() == 1:
-        fused_mask = (fused_mask * 255).astype(np.uint8)
-    else:
-        fused_mask = fused_mask.astype(np.uint8)
-
-    # Morphological cleaning
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
-    opened = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
-    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
-
-    # Component filtering
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+    
+    cleaned = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
+    
+    closed = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     filtered = np.zeros_like(closed)
-    debug_vis = np.zeros((*fused_mask.shape, 3), dtype=np.uint8)
-
-    h_img, w_img = fused_mask.shape
-    border_margin = 10
-
-    for i in range(1, num_labels):  # skip background
-        x, y, w, h, area = stats[i, :5]
-        aspect_ratio = w / h if h > 0 else 0
-        extent = area / (w * h + 1e-6)
-        label_mask = (labels == i)
-
-        if return_debug:
-            print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")
-
-        if area >= large_area_thresh:
-            filtered[label_mask] = 255
-            if return_debug:
-                debug_vis[label_mask] = [0, 255, 0]  # ✅ green: very large
-        elif area >= min_area:
-            if aspect_ratio < 3.5 and extent > min_extent:
-                filtered[label_mask] = 255
-                if return_debug:
-                    debug_vis[label_mask] = [255, 255, 255]  # ✅ white: normal pass
-            else:
-                if return_debug:
-                    debug_vis[label_mask] = [0, 165, 255]  # 🟠 orange: borderline
-        else:
-            if return_debug:
-                debug_vis[label_mask] = [0, 0, 255]  # 🔴 red: too small
-
-        # Optional area label
-        if return_debug:
-            cv2.putText(
-                debug_vis, f"{area}", (x, y + 10),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA
-            )
-
-    # Remove borders and bottom subtitles
-    filtered[:border_margin, :] = 0
-    filtered[-border_margin:, :] = 0
-    filtered[:, :border_margin] = 0
-    filtered[:, -border_margin:] = 0
-    filtered[int(0.9 * h_img):, :] = 0
-
-    # Fallback to previous valid mask if all rejected
-    if np.sum(filtered) == 0 and prev_valid_mask is not None:
-        print("[Fallback] Using previous valid mask due to empty post-process")
-        filtered = prev_valid_mask.copy()
-
-    if dilation_iters > 0:
-        filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)
-
-    return (filtered, debug_vis) if return_debug else filtered
-
-
+    for cnt in contours:
+        if cv2.contourArea(cnt) >= min_area:
+            cv2.drawContours(filtered, [cnt], -1, 255, -1)
+    return cv2.dilate(filtered, kernel, iterations=1)
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -279,14 +193,6 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     print("Loading configuration...")
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-        #newly added
-        post_cfg = config.get("postprocess", {})
-        post_min_area = post_cfg.get("min_area", 1200)
-        post_large_thresh = post_cfg.get("large_area_threshold", 50000)
-        post_min_extent = post_cfg.get("min_extent", 0.15)
-        post_dilation_iters = post_cfg.get("dilation_iters", 1)
-
-        
 
     model_cfg = config["model"]
     infer_cfg = config["inference"]
@@ -301,11 +207,6 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
     use_sam = enable_sam and fusion_method in ("sam_only", "union", "tsp+sam")
     use_pose = enable_pose and dataset_mode != "davis" and fusion_method in ("pose_only", "union", "tsp+pose")
     temporal_smoothing = infer_cfg.get("temporal_smoothing", False)
-    reset_memory_every = infer_cfg.get("reset_memory_every", None)
-    
-    print(f"[CONFIG] Dataset: {dataset_mode.upper()} | Fusion: {fusion_method} | use_sam={use_sam} | use_pose={use_pose} | temporal_smoothing={temporal_smoothing}")
-
-
 
     # Load model
     opt = type("opt", (object,), {})()
@@ -386,11 +287,6 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
         with tqdm(total=total_frames // frame_stride) as pbar:
             for idx, frame_data in frame_iter:
-                
-                if temporal_smoothing and reset_memory_every and idx % reset_memory_every == 0:
-                    print(f"[DEBUG] Resetting memory at frame {idx}")
-                    mask_memory.clear()
-                
                 if idx % frame_stride != 0:
                     continue
 
@@ -446,26 +342,11 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     h, w = frame.shape[:2]
                     aspect_ratio = h / w
                     relaxed_thresh = dynamic_pose_thresh * 0.5 if aspect_ratio > 1.4 else dynamic_pose_thresh
-                    # if pose_area < relaxed_thresh:
-                    #     print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
-                    #     # print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping.")
-                        
-                    #     pbar.update(1)
-                    #     continue
-                    
                     if pose_area < relaxed_thresh:
                         print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping. Dominant: {dominant}")
-                        
-                        # Save the skipped pose mask for inspection
-                        skipped_pose_dir = output_path / "pose_skipped"
-                        skipped_pose_dir.mkdir(exist_ok=True)
-                        
-                        debug_pose = cv2.resize(pose_mask, (frame.shape[1], frame.shape[0]))
-                        cv2.imwrite(str(skipped_pose_dir / f"{idx:05d}_pose_skipped.png"), debug_pose)
-
+                        # print(f"Frame {idx}: Pose area {pose_area} < relaxed threshold {relaxed_thresh}, skipping.")
                         pbar.update(1)
                         continue
-
 
                 # Mask Fusion Logic
                 print(f"Frame {idx}: Fusion method = {fusion_method}")
@@ -490,28 +371,7 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     smoothed_mask = np.mean(mask_memory, axis=0)
                     fused_mask = (smoothed_mask > 127).astype(np.uint8) * 255
 
-                # fused_mask = post_process_fused_mask(fused_mask, min_area=min_area)
-                
-                # UPDATED: Post-process with dataset-aware logic
-                # fused_mask = post_process_fused_mask(
-                #     fused_mask,
-                #     min_area=min_area,
-                #     dataset=dataset_mode
-                # )
-                
-                fused_mask, debug_vis = post_process_fused_mask(
-                    fused_mask,
-                    min_area=post_min_area,
-                    dilation_iters=post_dilation_iters,
-                    return_debug=True,
-                    large_area_thresh=post_large_thresh,
-                    min_extent=post_min_extent,
-                    prev_valid_mask=prev_valid_mask
-                )
-
-                cv2.imwrite(str(output_path / f"{idx:05d}_debug_post.png"), debug_vis)
-
-
+                fused_mask = post_process_fused_mask(fused_mask, min_area=min_area)
 
                 fused_area = int(np.sum(fused_mask > 0))
                 num_labels, labels, stats_cc, _ = cv2.connectedComponentsWithStats(fused_mask)
@@ -527,9 +387,6 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 if fused_area > 0:
                     prev_valid_mask = fused_mask.copy()
                     mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-                    
-                    cv2.imwrite(str(output_path / f"{idx:05d}_mask.png"), mask_resized)
-
                     save_mask_and_frame(frame, mask_resized, str(output_path), idx,
                                         save_overlay=output_cfg.get("save_overlay", True),
                                         overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
