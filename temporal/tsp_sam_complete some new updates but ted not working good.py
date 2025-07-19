@@ -268,6 +268,12 @@ def post_process_fused_mask(
         aspect_ratio = w / h if h > 0 else 0
         extent = area / (w * h + 1e-6)
         label_mask = (labels == i)
+        
+         # Optional: Ignore high aspect ratio + low area regions as noise
+        if area < 100 and aspect_ratio > 4.0:
+            if return_debug:
+                print(f"[Region {i}] Skipped due to high aspect ratio and low area")
+            continue
 
         if return_debug:
             print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")

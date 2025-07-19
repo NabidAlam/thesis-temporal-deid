@@ -135,13 +135,26 @@ model:
 #   dilation_iters: 1
 
 
+# postprocess:
+#   min_area: 1200                 # Accept smaller valid masks (e.g., limbs, objects)
+#   large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
+#   min_extent: 0.15           # Allow less compact masks (thin silhouettes)
+#   dilation_iters: 1              # Slight dilation to recover structure
+#   use_solidity_filter: true
+#   edge_fade: true
+#   iou_check: true
+#   border_margin: 0.05
+
+
 postprocess:
-  min_area: 1200                 # Accept smaller valid masks (e.g., limbs, objects)
-  large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
-  min_extent: 0.15           # Allow less compact masks (thin silhouettes)
-  dilation_iters: 1              # Slight dilation to recover structure
-  use_solidity_filter: true
-  edge_fade: true
-  iou_check: true
-
-
+  min_area: 1200                # Default area threshold (scaled by resolution)
+  large_area_threshold: 50000   # Fast accept if region is extremely large
+  min_extent: 0.15              # Minimum ratio of filled pixels in bbox
+  dilation_iters: 1            # Final dilation after postprocessing
+  use_solidity_filter: true    # Enable convexity filtering for irregular blobs
+  edge_fade: true              # Smooth mask borders visually in overlay
+  iou_check: true              # Warn if frame deviates from temporal mask
+  max_aspect_ratio: 6.0        # Upper bound on blob width/height ratio
+  min_solidity: 0.25           # Minimum solidity (convexity) for valid region
+  border_margin_pct: 0.03      # Mask border strip removal (e.g., TED stage borders)
+  extent_suppression: true     # Enable extra extent+area based suppression

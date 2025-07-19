@@ -120,11 +120,25 @@ fusion:
 # -------------------------
 # Post-processing Parameters (DAVIS-specific)
 # -------------------------
+# postprocess:
+#   min_area: 1200                 # Accept smaller valid masks (e.g., limbs, objects)
+#   large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
+#   min_extent: 0.25          # Allow less compact masks (thin silhouettes)
+#   dilation_iters: 1              # Slight dilation to recover structure
+#   use_solidity_filter: true
+#   edge_fade: true
+#   iou_check: true
+#   border_margin: 0.05
+
 postprocess:
-  min_area: 1550                 # Accept smaller valid masks (e.g., limbs, objects)
-  large_area_threshold: 50000    # Lowered large region cutoff for DAVIS
-  min_extent: 0.25          # Allow less compact masks (thin silhouettes)
-  dilation_iters: 1              # Slight dilation to recover structure
+  min_area: 400                 # DAVIS: allow small detailed objects (camel, dog)
+  large_area_threshold: 30000   # Lower threshold for fast-accept
+  min_extent: 0.03              # Looser extent tolerance for VOS blobs
+  dilation_iters: 1
   use_solidity_filter: true
   edge_fade: true
   iou_check: true
+  max_aspect_ratio: 5.0         # DAVIS: tighter AR, to suppress streaks
+  min_solidity: 0.2             # Allow deformable/motion-blur masks
+  border_margin_pct: 0.015      # DAVIS: narrow crop, no subtitle region
+  extent_suppression: true

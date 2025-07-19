@@ -1,36 +1,62 @@
 # ----------------------------------------------------------
-# TSP-SAM + SAM + Pose Fusion Runner (MaskAnyone-Temporal)
+# TSP-SAM + SAM + Pose Fusion Runner (MaskAnyone–Temporal)
 # ----------------------------------------------------------
 # Description:
 # This script runs temporally-consistent video segmentation
-# using TSP-SAM as the primary model, and optionally fuses it
-# with SAM (via bounding box prompts) and SAM2 (via pose keypoints).
+# using TSP-SAM as the primary model, optionally fused with:
+#   • SAM (via bounding box prompting)
+#   • SAM2 (via OpenPose keypoints)
+#
+# It supports GDPR-compliant privacy masking with shape-aware,
+# temporally-aware, and behavior-preserving mask refinement.
 #
 # Features:
-# - TSP-SAM-based core segmentation with adaptive thresholding
-# - Optional SAM integration using TSP-based bounding box prompting
-# - Optional pose-guided mask generation using OpenPose + SAM2
-# - Configurable mask fusion logic via YAML: "tsp_only", "union", "pose_only", "tsp+sam", "tsp+pose"
-# - Dynamic morphological kernel sizing for dataset adaptability
-# - Smart warmup-based pose mask thresholding with percentile control
-# - Aspect-ratio-aware relaxed pose filtering (e.g., for TED talkers vs full body)
-# - Frame-wise dominant source diagnostic logging (TSP/SAM/Pose)
-# - Optional temporal smoothing with rolling mask memory
-# - Connected component analysis for evaluating segmentation stability
-# - Full DAVIS and TED dataset support (video or folder input)
-# - Added reset_memory_every to reset mask memory periodically
-# - Output:
-#     • Binary masks
-#     • Overlay images
+# - TSP-SAM core segmentation with adaptive percentile thresholding
+# - Optional SAM integration via TSP-generated bounding boxes
+# - Optional SAM2 (pose-guided) mask generation via OpenPose prompts
+# - Configurable fusion logic: "tsp_only", "union", "pose_only", "tsp+sam", "tsp+pose"
+# - Dynamic pose fusion weighting based on keypoint area (TED- vs DAVIS-aware)
+# - Warmup-based percentile thresholding for pose mask filtering
+# - Aspect-ratio-aware pose threshold relaxation (e.g., TED talkers)
+# - Smart fusion diagnostics (dominant source per frame)
+#
+# - Dataset-aware postprocessing:
+#     • min_area, extent, solidity, aspect_ratio filtering
+#     • extent-based suppression for thin artifacts
+#     • automatic DAVIS threshold override
+#     • resolution-scaled filtering
+#     • mask hole filling + dilation
+#
+# - Temporal smoothing:
+#     • Rolling mask memory (deque)
+#     • reset_memory_every: control adaptive temporal refresh
+#     • IOU drift checks with fallback to previous valid mask
+#
+# - Overlay generation:
+#     • Edge-fade option for visual smoothness
+#     • Composite overlay + debug region visualization
+#
+# - Debug logging:
+#     • Frame-wise stats in `debug_stats.csv`
+#     • Debug masks for each thresholding stage
+#     • Pose mask skipped frame logs
+#
+# - Config-driven:
+#     • Fully YAML-configurable (model, inference, fusion, postprocess, output)
+#     • Dataset-specific config overrides (DAVIS vs TED)
+#
+# Output:
+#     • Binary segmentation masks
+#     • Optional overlay images
 #     • Composite debug visualizations
 #     • Frame-by-frame statistics in `debug_stats.csv`
 #
 # Usage:
 # python temporal/tsp_sam_complete.py <input_path> <output_dir> <config.yaml> [--force]
-
-
-# python temporal/tsp_sam_complete.py input/davis2017/JPEGImages/480p/kid-football output/tsp_sam/davis configs/tsp_sam_davis.yaml --force
-# python temporal/tsp_sam_complete.py input/ted/video1.mp4 output/tsp_sam/ted configs/tsp_sam_ted.yaml --force
+#
+# Example:
+# python temporal/tsp_sam_complete.py input/davis2017/JPEGImages/480p/camel output/tsp_sam/davis configs/tsp_sam_davis.yaml --force
+# python temporal/tsp_sam_complete.py input/ted/talk1.mp4 output/tsp_sam/ted configs/tsp_sam_ted.yaml --force
 
 
 # -------------------------------------------------------------
@@ -78,6 +104,17 @@ from utils import save_mask_and_frame, resize_frame
 from maskanyone_sam_wrapper import MaskAnyoneSAMWrapper
 from pose_extractor import extract_pose_keypoints
 from my_sam2_client import MySAM2Client
+
+
+def fade_edges(mask, width=20):
+    h, w = mask.shape
+    fade = np.ones_like(mask, dtype=np.float32)
+    fade[:width, :] *= np.linspace(0, 1, width)[:, None]
+    fade[-width:, :] *= np.linspace(1, 0, width)[:, None]
+    fade[:, :width] *= np.linspace(0, 1, width)[None, :]
+    fade[:, -width:] *= np.linspace(1, 0, width)[None, :]
+    return (mask.astype(np.float32) * fade).astype(np.uint8)
+
 
 def scale_keypoints(keypoints, original_shape, target_shape=(512, 512)):
     orig_h, orig_w = original_shape
@@ -215,6 +252,172 @@ def fill_mask_holes(mask):
 
 #     return (filtered, debug_vis) if return_debug else filtered
 
+# def post_process_fused_mask(
+#     fused_mask,
+#     min_area=1200,
+#     kernel_size=None,
+#     dilation_iters=1,
+#     return_debug=False,
+#     large_area_thresh=50000,
+#     min_extent=0.15,
+#     prev_valid_mask=None,
+#     config=None
+# ):
+
+#     import inspect
+#     caller_locals = inspect.currentframe().f_back.f_locals
+#     use_solidity_filter = caller_locals.get("post_cfg", {}).get("use_solidity_filter", False)
+#     # use_solidity_filter = config.get("use_solidity_filter", False) if config else False
+
+
+#     dataset_mode = caller_locals.get("dataset_mode", "ted").lower()
+
+#     # Override for DAVIS to improve small-object recall
+#     if dataset_mode == "davis":
+#         print("[Override] Postprocess thresholds adjusted for DAVIS")
+#         min_area = 400
+#         min_extent = 0.03
+#         dilation_iters = 1
+
+#     if kernel_size is None:
+#         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
+
+#     # Resolution-aware scaling of area thresholds (relative to 512x512)
+#     h_img, w_img = fused_mask.shape
+#     scale_factor = (h_img * w_img) / (512 * 512)
+#     min_area = int(min_area * scale_factor)
+#     large_area_thresh = int(large_area_thresh * scale_factor)
+
+#     # Ensure 0–255 uint8 binary
+#     if fused_mask.max() == 1:
+#         fused_mask = (fused_mask * 255).astype(np.uint8)
+#     else:
+#         fused_mask = fused_mask.astype(np.uint8)
+
+#     # Morphological cleaning
+#     kernel = np.ones((kernel_size, kernel_size), np.uint8)
+#     opened = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
+#     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+
+#     # Component filtering
+#     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+#     filtered = np.zeros_like(closed)
+#     debug_vis = np.zeros((*fused_mask.shape, 3), dtype=np.uint8)
+
+#     # border_margin = 10
+#     border_margin = max(10, int(0.02 * h_img))  # ~2% of height
+
+
+#     for i in range(1, num_labels):  # skip background
+#         x, y, w, h, area = stats[i, :5]
+#         aspect_ratio = w / h if h > 0 else 0
+#         extent = area / (w * h + 1e-6)
+#         label_mask = (labels == i)
+#         if use_solidity_filter:
+#             cnt = np.array(np.where(label_mask)).T
+#             cnt = np.flip(cnt, axis=1).reshape(-1, 1, 2).astype(np.int32)
+#             if len(cnt) < 3:
+#                 continue
+
+#             hull = cv2.convexHull(cnt)
+#             hull_area = cv2.contourArea(hull)
+#             solidity = float(area) / (hull_area + 1e-6)
+
+#             if solidity < 0.3 and extent < 0.5:
+#                 if return_debug:
+#                     print(f"[Region {i}] Skipped due to low solidity {solidity:.2f} and extent {extent:.2f}")
+#                 continue
+
+
+
+        
+#         # cnt = np.array(np.where(label_mask)).T
+#         # cnt = np.flip(cnt, axis=1).reshape(-1, 1, 2).astype(np.int32)
+#         # if len(cnt) < 3:
+#         #     continue
+#         # hull = cv2.convexHull(cnt)
+#         # hull_area = cv2.contourArea(hull)
+#         # solidity = float(area) / (hull_area + 1e-6)
+#         # if solidity < 0.3:
+#         #     if return_debug:
+#         #         print(f"[Region {i}] Skipped due to low solidity {solidity:.2f}")
+#         #     continue
+
+        
+#          # Optional: Ignore high aspect ratio + low area regions as noise
+#         if area < 100 and aspect_ratio > 4.0:
+#             if return_debug:
+#                 print(f"[Region {i}] Skipped due to high aspect ratio and low area")
+#             continue
+
+#         if return_debug:
+#             print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")
+
+#         if area >= large_area_thresh:
+#             filtered[label_mask] = 255
+#             if return_debug:
+#                 debug_vis[label_mask] = [0, 255, 0]  # green: very large
+#         elif area >= min_area:
+#             # Accept normal and thin blobs adaptively
+#             if (
+#                 (extent > min_extent and aspect_ratio < 3.0 and h > 5 and w > 5)
+#                 or (extent > 0.015 and aspect_ratio > 2.0 and area >= min_area * 0.7)
+#             ):
+#                 filtered[label_mask] = 255
+#                 if return_debug:
+#                     debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
+#             else:
+#                 if return_debug:
+#                     debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
+
+#         # elif area >= min_area:
+#         #     if aspect_ratio < 3.0 and extent > min_extent and h > 5 and w > 5:
+#         #         filtered[label_mask] = 255
+#         #         if return_debug:
+#         #             debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
+#         #     else:
+#         #         if return_debug:
+#         #             debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
+#         else:
+#             if return_debug:
+#                 debug_vis[label_mask] = [0, 0, 255]  # red: too small
+
+#         # Optional area label
+#         if return_debug:
+#             cv2.putText(
+#                 debug_vis, f"{area}", (x, y + 10),
+#                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA
+#             )
+            
+#     if return_debug:
+#         print(f"[Summary] {np.sum(filtered > 0)} pixels kept across {np.max(labels)} regions")
+
+
+#     # Remove borders and bottom subtitles
+#     filtered[:border_margin, :] = 0
+#     filtered[-border_margin:, :] = 0
+#     filtered[:, :border_margin] = 0
+#     filtered[:, -border_margin:] = 0
+#     filtered[int(0.9 * h_img):, :] = 0
+
+#     # Fallback to previous valid mask if all rejected
+#     if np.sum(filtered) == 0:
+#         print("[Warning] Empty postprocessed mask. Raw TSP or previous mask used.")
+#         if prev_valid_mask is not None:
+#             print("[Fallback] Using previous valid mask due to empty post-process")
+#             filtered = prev_valid_mask.copy()
+#         else:
+#             print("[Fallback] All regions filtered. Using raw TSP mask.")
+#             filtered = fused_mask.copy()
+
+#     # Fill holes before final dilation
+#     filtered = fill_mask_holes(filtered)
+
+#     if dilation_iters > 0:
+#         filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)
+
+#     return (filtered, debug_vis) if return_debug else filtered
+
 def post_process_fused_mask(
     fused_mask,
     min_area=1200,
@@ -223,13 +426,19 @@ def post_process_fused_mask(
     return_debug=False,
     large_area_thresh=50000,
     min_extent=0.15,
-    prev_valid_mask=None
+    prev_valid_mask=None,
+    max_aspect_ratio=6.0,
+    min_solidity=0.25,
+    border_margin_pct=0.03,
+    use_extent_suppression=True
 ):
     import inspect
     caller_locals = inspect.currentframe().f_back.f_locals
+    post_cfg = caller_locals.get("post_cfg", {})
+    use_solidity_filter = post_cfg.get("use_solidity_filter", False)
+
     dataset_mode = caller_locals.get("dataset_mode", "ted").lower()
 
-    # Override for DAVIS to improve small-object recall
     if dataset_mode == "davis":
         print("[Override] Postprocess thresholds adjusted for DAVIS")
         min_area = 400
@@ -239,35 +448,60 @@ def post_process_fused_mask(
     if kernel_size is None:
         kernel_size = get_dynamic_kernel_size(fused_mask.shape)
 
-    # Resolution-aware scaling of area thresholds (relative to 512x512)
     h_img, w_img = fused_mask.shape
     scale_factor = (h_img * w_img) / (512 * 512)
     min_area = int(min_area * scale_factor)
     large_area_thresh = int(large_area_thresh * scale_factor)
 
-    # Ensure 0–255 uint8 binary
     if fused_mask.max() == 1:
         fused_mask = (fused_mask * 255).astype(np.uint8)
     else:
         fused_mask = fused_mask.astype(np.uint8)
 
-    # Morphological cleaning
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
     opened = cv2.morphologyEx(fused_mask, cv2.MORPH_OPEN, kernel)
     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
 
-    # Component filtering
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
     filtered = np.zeros_like(closed)
     debug_vis = np.zeros((*fused_mask.shape, 3), dtype=np.uint8)
 
-    border_margin = 10
+    border_margin = max(10, int(border_margin_pct * h_img))
 
-    for i in range(1, num_labels):  # skip background
+    for i in range(1, num_labels):
         x, y, w, h, area = stats[i, :5]
         aspect_ratio = w / h if h > 0 else 0
         extent = area / (w * h + 1e-6)
         label_mask = (labels == i)
+
+        # Aspect ratio + low-area suppression
+        if area < 100 and aspect_ratio > 4.0:
+            if return_debug:
+                print(f"[Region {i}] Skipped: high aspect ratio and low area")
+            continue
+
+        if aspect_ratio > max_aspect_ratio:
+            if return_debug:
+                print(f"[Region {i}] Skipped: aspect_ratio={aspect_ratio:.2f} exceeds max {max_aspect_ratio}")
+            continue
+
+        if use_solidity_filter:
+            cnt = np.array(np.where(label_mask)).T
+            cnt = np.flip(cnt, axis=1).reshape(-1, 1, 2).astype(np.int32)
+            if len(cnt) < 3:
+                continue
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = float(area) / (hull_area + 1e-6)
+            if solidity < min_solidity:
+                if return_debug:
+                    print(f"[Region {i}] Skipped: solidity={solidity:.2f} below min {min_solidity}")
+                continue
+
+        if use_extent_suppression and extent < 0.1 and area < 1.5 * min_area:
+            if return_debug:
+                print(f"[Region {i}] Skipped: tight extent suppression (extent={extent:.2f})")
+            continue
 
         if return_debug:
             print(f"[Region {i}] area={area}, aspect_ratio={aspect_ratio:.2f}, extent={extent:.2f}")
@@ -275,47 +509,38 @@ def post_process_fused_mask(
         if area >= large_area_thresh:
             filtered[label_mask] = 255
             if return_debug:
-                debug_vis[label_mask] = [0, 255, 0]  # green: very large
+                debug_vis[label_mask] = [0, 255, 0]  # green
         elif area >= min_area:
-            # Accept normal and thin blobs adaptively
             if (
-                (extent > min_extent and aspect_ratio < 3.0 and h > 5 and w > 5)
-                or (extent > 0.015 and aspect_ratio > 2.0 and area >= min_area * 0.7)
+                (extent > min_extent and aspect_ratio < 3.0 and h > 5 and w > 5) or
+                (extent > 0.015 and aspect_ratio > 2.0 and area >= 0.7 * min_area)
             ):
                 filtered[label_mask] = 255
                 if return_debug:
-                    debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
+                    debug_vis[label_mask] = [255, 255, 255]  # white
             else:
                 if return_debug:
-                    debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
-
-        # elif area >= min_area:
-        #     if aspect_ratio < 3.0 and extent > min_extent and h > 5 and w > 5:
-        #         filtered[label_mask] = 255
-        #         if return_debug:
-        #             debug_vis[label_mask] = [255, 255, 255]  # white: normal pass
-        #     else:
-        #         if return_debug:
-        #             debug_vis[label_mask] = [0, 165, 255]  # orange: borderline
+                    debug_vis[label_mask] = [0, 165, 255]  # orange
         else:
             if return_debug:
-                debug_vis[label_mask] = [0, 0, 255]  # red: too small
+                debug_vis[label_mask] = [0, 0, 255]  # red
 
-        # Optional area label
         if return_debug:
             cv2.putText(
                 debug_vis, f"{area}", (x, y + 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA
             )
 
-    # Remove borders and bottom subtitles
+    if return_debug:
+        print(f"[Summary] {np.sum(filtered > 0)} pixels kept across {np.max(labels)} regions")
+
+    # Edge trimming
     filtered[:border_margin, :] = 0
     filtered[-border_margin:, :] = 0
     filtered[:, :border_margin] = 0
     filtered[:, -border_margin:] = 0
     filtered[int(0.9 * h_img):, :] = 0
 
-    # Fallback to previous valid mask if all rejected
     if np.sum(filtered) == 0:
         print("[Warning] Empty postprocessed mask. Raw TSP or previous mask used.")
         if prev_valid_mask is not None:
@@ -325,13 +550,13 @@ def post_process_fused_mask(
             print("[Fallback] All regions filtered. Using raw TSP mask.")
             filtered = fused_mask.copy()
 
-    # Fill holes before final dilation
     filtered = fill_mask_holes(filtered)
 
     if dilation_iters > 0:
         filtered = cv2.dilate(filtered, kernel, iterations=dilation_iters)
 
     return (filtered, debug_vis) if return_debug else filtered
+
 
 
 def extract_bbox_from_mask(mask, margin_ratio=0.05):
@@ -374,7 +599,7 @@ def model_infer_real(model, frame, infer_cfg, debug_save_dir=None, frame_idx=Non
     adaptive_thresh = get_adaptive_threshold(prob, percentile=percentile)
     raw_mask = (prob > adaptive_thresh).astype(np.uint8)
     mask_denoised = median_filter(raw_mask, size=3)
-    mask_denoised = cv2.GaussianBlur(mask_denoised, (7, 7), 0)
+    mask_denoised = cv2.GaussianBlur(mask_denoised, (5, 5), 0)
 
     kernel = np.ones((5, 5), np.uint8)
     mask_open = cv2.morphologyEx(mask_denoised, cv2.MORPH_OPEN, kernel)
@@ -422,15 +647,19 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
         config = yaml.safe_load(f)
         #newly added
         post_cfg = config.get("postprocess", {})
+        use_edge_fade = post_cfg.get("edge_fade", False)
+
         post_min_area = post_cfg.get("min_area", 1200)
         post_large_thresh = post_cfg.get("large_area_threshold", 50000)
         post_min_extent = post_cfg.get("min_extent", 0.15)
         post_dilation_iters = post_cfg.get("dilation_iters", 1)
-        
-        
+        post_max_aspect_ratio = post_cfg.get("max_aspect_ratio", 6.0)
+        post_min_solidity = post_cfg.get("min_solidity", 0.25)
+        post_border_margin_pct = post_cfg.get("border_margin", 0.03)
+        post_extent_suppression = post_cfg.get("tight_extent_check", True)
 
         
-
+        
     model_cfg = config["model"]
     infer_cfg = config["inference"]
     output_cfg = config["output"]
@@ -542,7 +771,11 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
             "tsp_area", "sam_area", "pose_area", "fused_area", "max_region"
         ])
 
-        mask_memory = deque(maxlen=5)
+        # mask_memory = deque(maxlen=5)
+        temporal_window = 10 if dataset_mode == "ted" else 5
+        mask_memory = deque(maxlen=temporal_window)
+
+
         prev_valid_mask = None
 
         with tqdm(total=total_frames // frame_stride) as pbar:
@@ -563,6 +796,8 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                         break
 
                 frame_resized = resize_frame(frame, infer_cfg)
+                print(f"[Model Infer] Running TSP-SAM on frame {idx}")
+
                 rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
                 tsp_mask, stats = model_infer_real(
                     model, frame_resized, infer_cfg,
@@ -590,6 +825,8 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                         masks = sam2_client.predict_points(Image.fromarray(rgb), scaled, [1]*len(scaled))
                         if masks and masks[0] is not None:
                             pose_mask = cv2.resize(masks[0], tsp_mask.shape[::-1], interpolation=cv2.INTER_NEAREST)
+                            print(f"[Pose] Frame {idx}: SAM2 generated pose mask, area = {np.sum(pose_mask > 0)}")
+
 
 
                 pose_area = int(np.sum(pose_mask > 0))
@@ -666,22 +903,42 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     fused_mask = pose_mask
                 elif fusion_method == "tsp+sam":
                     fused_mask = cv2.bitwise_or(tsp_mask, sam_mask)
+                # elif fusion_method == "tsp+pose":
+                #     fused_mask = cv2.bitwise_or(tsp_mask, pose_mask)
                 elif fusion_method == "tsp+pose":
-                    fused_mask = cv2.bitwise_or(tsp_mask, pose_mask)
+                    pose_area = np.sum(pose_mask > 0)
+                    relaxed_thresh = dynamic_pose_thresh * 1.2
+                    pose_weight = 0.5 if pose_area < relaxed_thresh else 1.0
+                    pose_weighted = (pose_mask.astype(np.float32) * pose_weight).astype(np.uint8)
+                    fused_mask = cv2.bitwise_or(tsp_mask, pose_weighted)
+
+
                     
 
 
-                if temporal_smoothing:
-                    if idx < 5:
-                        # Warmup memory with first few masks to stabilize early temporal smoothing
-                        for _ in range(5):
-                            mask_memory.append(fused_mask.astype(np.float32))
-                    else:
-                        mask_memory.append(fused_mask.astype(np.float32))
+                # if temporal_smoothing:
+                #     if idx < 5:
+                #         # Warmup memory with first few masks to stabilize early temporal smoothing
+                #         for _ in range(5):
+                #             mask_memory.append(fused_mask.astype(np.float32))
+                #     else:
+                #         mask_memory.append(fused_mask.astype(np.float32))
 
-                    # Apply temporal smoothing
+                #     # Apply temporal smoothing
+                #     smoothed_mask = np.mean(mask_memory, axis=0)
+                #     fused_mask = (smoothed_mask > 127).astype(np.uint8) * 255
+                    
+                if temporal_smoothing:
+                    if idx < mask_memory.maxlen:
+                        # Pre-fill memory to avoid cold start flicker
+                        for _ in range(mask_memory.maxlen - idx):
+                            mask_memory.append(fused_mask.astype(np.float32))
+                    mask_memory.append(fused_mask.astype(np.float32))
                     smoothed_mask = np.mean(mask_memory, axis=0)
                     fused_mask = (smoothed_mask > 127).astype(np.uint8) * 255
+                    print(f"[Temporal Smoothing] Applied on frame {idx}, memory size: {len(mask_memory)}")
+
+
 
                 # # Optional Temporal Smoothing
                 # if temporal_smoothing:
@@ -698,6 +955,18 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 #     dataset=dataset_mode
                 # )
                 
+                # fused_mask, debug_vis = post_process_fused_mask(
+                #     fused_mask,
+                #     min_area=post_min_area,
+                #     dilation_iters=post_dilation_iters,
+                #     return_debug=True,
+                #     large_area_thresh=post_large_thresh,
+                #     min_extent=post_min_extent,
+                #     prev_valid_mask=prev_valid_mask
+                # )
+                
+                print(f"[PostProcess] Invoking post_process_fused_mask on frame {idx}")
+                
                 fused_mask, debug_vis = post_process_fused_mask(
                     fused_mask,
                     min_area=post_min_area,
@@ -705,42 +974,56 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                     return_debug=True,
                     large_area_thresh=post_large_thresh,
                     min_extent=post_min_extent,
-                    prev_valid_mask=prev_valid_mask
+                    prev_valid_mask=prev_valid_mask,
+                    max_aspect_ratio=post_max_aspect_ratio,
+                    min_solidity=post_min_solidity,
+                    border_margin_pct=post_border_margin_pct,
+                    use_extent_suppression=post_extent_suppression
                 )
+
 
                 cv2.imwrite(str(output_path / f"{idx:05d}_debug_post.png"), debug_vis)
 
 
-
                 fused_area = int(np.sum(fused_mask > 0))
-                num_labels, labels, stats_cc, _ = cv2.connectedComponentsWithStats(fused_mask)
-                num_regions = num_labels - 1  # exclude background
-                print(f"Frame {idx}: Connected regions = {num_regions}")
 
-                max_region = 0 if len(stats_cc) <= 1 else np.max(stats_cc[1:, cv2.CC_STAT_AREA])
+                # IOU drift warning (before potential fallback, only if enabled)
+                if post_cfg.get("iou_check", False) and prev_valid_mask is not None:
+                    iou = np.sum((fused_mask > 0) & (prev_valid_mask > 0)) / (np.sum((fused_mask > 0) | (prev_valid_mask > 0)) + 1e-6)
+                    if iou < 0.3:
+                        print(f"[Drift Warning] Frame {idx}: IOU with previous = {iou:.2f}")
 
+                # Fallback to previous valid mask if current is empty
                 if fused_area == 0 and prev_valid_mask is not None:
                     fused_mask = prev_valid_mask.copy()
                     fused_area = int(np.sum(fused_mask > 0))
 
+                # Connected component stats
+                num_labels, labels, stats_cc, _ = cv2.connectedComponentsWithStats(fused_mask)
+                num_regions = num_labels - 1  # exclude background
+                print(f"Frame {idx}: Connected regions = {num_regions}")
+                max_region = 0 if len(stats_cc) <= 1 else np.max(stats_cc[1:, cv2.CC_STAT_AREA])
+                print(f"[Output] Frame {idx}: Mask saved, fused_area={fused_area}, max_region={max_region}, dominant={dominant}")
+
+
+                # Save outputs only if mask is valid
                 if fused_area > 0:
                     prev_valid_mask = fused_mask.copy()
                     mask_resized = cv2.resize(fused_mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
-                    
+
+                    # Save binary mask
                     cv2.imwrite(str(output_path / f"{idx:05d}_mask.png"), mask_resized)
 
-                    # save_mask_and_frame(frame, mask_resized, str(output_path), idx,
-                    #                     save_overlay=output_cfg.get("save_overlay", True),
-                    #                     overlay_alpha=output_cfg.get("overlay_alpha", 0.5),
-                    #                     save_frames=output_cfg.get("save_frames", False),
-                    #                     save_composite=True)
-                    
-                                        # Create a blurred copy ONLY for overlay, keep original for saving mask
-                    overlay_mask = cv2.GaussianBlur(mask_resized, (7, 7), 0)
+                    # Create overlay mask with optional edge fading
+                    if use_edge_fade:
+                        overlay_mask = fade_edges(mask_resized)
+                    else:
+                        overlay_mask = mask_resized.copy()
+                    overlay_mask = cv2.GaussianBlur(overlay_mask, (7, 7), 0)
 
                     save_mask_and_frame(
                         frame,
-                        overlay_mask,  # blurred copy
+                        overlay_mask,
                         str(output_path),
                         idx,
                         save_overlay=output_cfg.get("save_overlay", True),
@@ -748,13 +1031,18 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                         save_frames=output_cfg.get("save_frames", False),
                         save_composite=True
                     )
+                    
+                    print(f"[Output] Frame {idx}: Mask saved, fused_area={fused_area}, max_region={max_region}, dominant={dominant}")
 
 
+
+                # Log stats to CSV
                 writer.writerow([
                     idx, stats['mean'], stats['max'], stats['min'], stats['adaptive_thresh'],
                     tsp_area, sam_area, pose_area, fused_area, max_region
                 ])
                 pbar.update(1)
+
 
     if dataset_mode != "davis":
         cap.release()
