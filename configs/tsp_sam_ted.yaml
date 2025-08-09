@@ -124,8 +124,10 @@ fusion:
 
 
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
-  backbone_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  # checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth
+  # backbone_path: tsp_sam/model_checkpoint/pvt_v2_b5.pth
+  checkpoint_path: TSP_SAMs/model_checkpoint/best_checkpoint.pth
+  backbone_path: TSP_SAMs/model_checkpoint/pvt_v2_b5.pth
 
 
 # postprocess:

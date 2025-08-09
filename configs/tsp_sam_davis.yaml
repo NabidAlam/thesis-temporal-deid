@@ -50,7 +50,8 @@
 # Model Configuration
 # -------------------------
 model:
-  checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
+  # checkpoint_path: tsp_sam/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
+  checkpoint_path: TSP_SAMs/model_checkpoint/best_checkpoint.pth  # TSP-SAM model weights
   device: cuda                                                   # Use 'cuda' or 'cpu'
   channel: 32                                                    # Model feature channels
 
@@ -65,12 +66,21 @@ model:
 #   dynamic_kernel_divisor: 100        # Enables adaptive morphological kernel sizing
 #   temporal_smoothing: true           # Enables memory-based mask smoothing
 
+# inference:
+#   frame_stride: 1
+#   min_area: 400         # lower to allow parts like paws, ears, tail
+#   suppress_bottom_text: true
+#   adaptive_percentile: 95   # more inclusive
+#   dynamic_kernel_divisor: 80
+#   temporal_smoothing: true
+#   reset_memory_every: 8
+
 inference:
   frame_stride: 1
-  min_area: 400         # lower to allow parts like paws, ears, tail
-  suppress_bottom_text: true
-  adaptive_percentile: 96   # more inclusive
-  dynamic_kernel_divisor: 80
+  adaptive_percentile: 96     # More inclusive (try 94–96 range)
+  min_area: 200               # Smallest meaningful segment (e.g., head or arm)
+  suppress_bottom_text: false # Not needed for DAVIS
+  dynamic_kernel_divisor: 100 # Stable blur/dilation scaling
   temporal_smoothing: true
   reset_memory_every: 8
 
@@ -87,10 +97,11 @@ output:
 # SAM Fusion Settings
 # -------------------------
 compare_sam: false                   # No SAM fusion for DAVIS baseline
-fusion_method: "tsp+pose"  
+# fusion_method: "tsp+pose"  
 # fusion_method: "sam_only"         # Pure TSP-SAM output (no fusion with SAM or pose)
-# fusion_method: "tsp_only"
+fusion_method: "tsp_only"
 # fusion_method: tsp+sam
+# fusion_method: "union"
 # -------------------------
 # SAM Checkpoint Info
 # -------------------------
@@ -146,10 +157,12 @@ fusion:
 
 
 postprocess:
-  min_area: 300
-  min_extent: 0.03
-  min_solidity: 0.15
+  min_area: 500                      # filter out small noise (esp. in crowded scenes)
+  min_extent: 0.04                   # slightly higher to avoid skinny masks
+  min_solidity: 0.2                  # still permissive for occluded silhouettes
   max_aspect_ratio: 10.0
-  dilation_iters: 1
+  dilation_iters: 1                 # helps merge broken regions (careful with 2+)
   large_area_threshold: 80000
   iou_check: true
+  extent_suppression: true
+  border_margin_pct: 0.015          # tighter than TED (no subtitles in DAVIS)

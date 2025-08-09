@@ -1,5 +1,6 @@
 import cv2
 import os
+import numpy as np
 
 def resize_frame(frame, cfg):
     h, w = frame.shape[:2]
@@ -13,114 +14,6 @@ def resize_frame(frame, cfg):
     new_w, new_h = int(w * scale), int(h * scale)
     return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-
-# def save_mask_and_frame(frame, mask, output_path, frame_idx, save_overlay=True, overlay_alpha=0.5):
-#     """
-#     Saves the binary mask and optionally an overlay image.
-
-#     Args:
-#         frame (np.ndarray): Original RGB frame.
-#         mask (np.ndarray): Binary mask (same HxW as frame).
-#         output_path (str): Folder to save output.
-#         frame_idx (int): Frame number.
-#         save_overlay (bool): Whether to save overlay visualization.
-#         overlay_alpha (float): Blend weight for overlay (0.0–1.0).
-#     """
-#     # Save binary mask
-#     mask_path = os.path.join(output_path, f"mask_{frame_idx:04d}.png")
-#     cv2.imwrite(mask_path, (mask * 255).astype("uint8"))
-
-#     if save_overlay:
-#         # Convert mask to 3-channel
-#         colored_mask = cv2.cvtColor((mask * 255).astype("uint8"), cv2.COLOR_GRAY2BGR)
-#         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, colored_mask, overlay_alpha, 0)
-
-#         overlay_path = os.path.join(output_path, f"overlay_{frame_idx:04d}.jpg")
-#         cv2.imwrite(overlay_path, overlay)
-
-# def save_mask_and_frame(frame, mask, output_path, frame_idx, save_overlay=True, overlay_alpha=0.5):
-#     # Ensure mask is same size as frame
-#     mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
-
-#     # Save raw mask
-#     mask_path = os.path.join(output_path, f"mask_{frame_idx:05d}.png")
-#     cv2.imwrite(mask_path, mask)
-
-#     # Optionally overlay and save
-#     if save_overlay:
-#         # Convert mask to 3-channel BGR (for overlay)
-#         if len(mask.shape) == 2:
-#             colored_mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-#         else:
-#             colored_mask = mask
-
-#         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, colored_mask, overlay_alpha, 0)
-#         overlay_path = os.path.join(output_path, f"overlay_{frame_idx:05d}.jpg")
-#         cv2.imwrite(overlay_path, overlay)
-
-
-# def save_mask_and_frame(frame, mask, output_dir, frame_idx, save_overlay=True, overlay_alpha=0.5, save_frames=False):
-#     frame_path = os.path.join(output_dir, f"frame_{frame_idx:05d}.jpg")
-#     mask_path = os.path.join(output_dir, f"mask_{frame_idx:05d}.png")
-#     overlay_path = os.path.join(output_dir, f"overlay_{frame_idx:05d}.jpg")
-
-#     # Save mask (grayscale PNG)
-#     cv2.imwrite(mask_path, mask)
-
-#     if save_frames:
-#         cv2.imwrite(frame_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 80])  # Use JPEG
-
-#     if save_overlay:
-#         # Ensure mask has 3 channels
-#         if len(mask.shape) == 2:
-#             mask_colored = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-#         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, mask_colored, overlay_alpha, 0)
-#         cv2.imwrite(overlay_path, overlay, [cv2.IMWRITE_JPEG_QUALITY, 80])
-
-
-# import os
-# import cv2
-# import numpy as np
-
-# def save_mask_and_frame(frame, mask, output_dir, frame_idx,
-#                         save_overlay=True, overlay_alpha=0.5,
-#                         save_frames=False, save_composite=False):
-#     """
-#     Save mask, (optional) overlay, and (optional) raw frame.
-#     If `save_composite` is True, a side-by-side view of original and overlay is saved.
-#     """
-#     os.makedirs(output_dir, exist_ok=True)
-
-#     # Ensure mask has 1 channel and matches frame size
-#     if mask.shape != frame.shape[:2]:
-#         raise ValueError(f"Mask and frame shape mismatch: {mask.shape} vs {frame.shape[:2]}")
-
-#     mask_color = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-
-#     frame_filename = os.path.join(output_dir, f"{frame_idx:05d}.jpg")
-#     mask_filename = os.path.join(output_dir, f"{frame_idx:05d}_mask.png")
-#     overlay_filename = os.path.join(output_dir, f"{frame_idx:05d}_overlay.jpg")
-#     composite_filename = os.path.join(output_dir, f"{frame_idx:05d}_composite.jpg")
-
-#     if save_frames:
-#         cv2.imwrite(frame_filename, frame)
-
-#     cv2.imwrite(mask_filename, mask)
-
-#     if save_overlay or save_composite:
-#         overlay = cv2.addWeighted(frame, 1 - overlay_alpha, mask_color, overlay_alpha, 0)
-
-#         if save_overlay:
-#             cv2.imwrite(overlay_filename, overlay)
-
-#         if save_composite:
-#             composite = np.hstack((frame, overlay))
-#             cv2.imwrite(composite_filename, composite)
-
-
-import os
-import cv2
-import numpy as np
 
 def save_mask_and_frame(frame, mask, output_dir, frame_idx,
                         save_overlay=True, overlay_alpha=0.5,
@@ -169,3 +62,22 @@ def save_mask_and_frame(frame, mask, output_dir, frame_idx,
         if save_composite:
             composite = np.hstack((frame, overlay))
             cv2.imwrite(composite_filename, composite)
+
+
+
+# this is for baseline tsp sams
+def post_process(mask, min_area=1000, kernel_size=5):
+    """
+    Perform morphological operations and small object removal.
+    """
+    mask = (mask > 0).astype(np.uint8)
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    cleaned = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(cleaned, connectivity=8)
+    final_mask = np.zeros_like(mask)
+    for i in range(1, num_labels):  # skip background
+        if stats[i, cv2.CC_STAT_AREA] >= min_area:
+            final_mask[labels == i] = 1
+    return final_mask
