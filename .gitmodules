@@ -9,3 +9,6 @@
 [submodule "davis2017-evaluation"]
 	path = davis2017-evaluation
 	url = https://github.com/dbolya/davis2017-evaluation.git
+[submodule "tsp_sam_base"]
+	path = tsp_sam_base
+	url = https://github.com/NabidAlam/TSP-SAM.git
