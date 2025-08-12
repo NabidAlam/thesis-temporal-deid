@@ -1,9 +1,11 @@
 [submodule "maskanyone"]
 	path = maskanyone
 	url = https://github.com/MaskAnyone/MaskAnyone.git
-[submodule "tsp_sam_b"]
-	path = tsp_sam_b
-	url = https://github.com/WenjunHui1/TSP-SAM.git
+
+
+[submodule "tsp_sam_base"]
+path = tsp_sam_base
+url = https://github.com/NabidAlam/TSP-SAM.git
 [submodule "samurai"]
 	path = samurai
 	url = https://github.com/yangchris11/samurai.git
