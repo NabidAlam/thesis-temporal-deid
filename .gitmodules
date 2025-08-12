@@ -10,3 +10,6 @@
 [submodule "samurai_base"]
 	path = samurai_base
 	url = https://github.com/NabidAlam/samurai.git
+[submodule "samuraib"]
+	path = samuraib
+	url = https://github.com/NabidAlam/samurai.git
