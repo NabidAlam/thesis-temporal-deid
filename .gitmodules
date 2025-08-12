@@ -1,8 +1,8 @@
 [submodule "maskanyone"]
 	path = maskanyone
 	url = https://github.com/MaskAnyone/MaskAnyone.git
-[submodule "TSP_SAM"]
-	path = TSP_SAM
+[submodule "tsp_sam_b"]
+	path = tsp_sam_b
 	url = https://github.com/WenjunHui1/TSP-SAM.git
 [submodule "samurai"]
 	path = samurai
@@ -10,6 +10,3 @@
 [submodule "davis2017-evaluation"]
 	path = davis2017-evaluation
 	url = https://github.com/dbolya/davis2017-evaluation.git
-[submodule "tsp_sam_b"]
-	path = tsp_sam_b
-	url = https://github.com/WenjunHui1/TSP-SAM.git
