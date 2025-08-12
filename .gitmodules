@@ -1,9 +1,6 @@
 [submodule "maskanyone"]
 	path = maskanyone
 	url = https://github.com/MaskAnyone/MaskAnyone.git
-[submodule "samurai"]
-	path = samurai
-	url = https://github.com/yangchris11/samurai.git
 [submodule "davis2017-evaluation"]
 	path = davis2017-evaluation
 	url = https://github.com/dbolya/davis2017-evaluation.git
