@@ -12,3 +12,6 @@
 [submodule "tsp_sam_base"]
 	path = tsp_sam_base
 	url = https://github.com/NabidAlam/TSP-SAM.git
+[submodule "tspsam"]
+	path = tspsam
+	url = https://github.com/NabidAlam/TSP-SAM.git
