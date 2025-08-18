@@ -10,3 +10,6 @@
 [submodule "samurai"]
 	path = samurai
 	url = https://github.com/NabidAlam/samurai.git
+[submodule "tsp_sam_official"]
+	path = tsp_sam_official
+	url = https://github.com/WenjunHui1/TSP-SAM.git
