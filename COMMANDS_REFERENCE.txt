@@ -1,0 +1,139 @@
+================================================================================
+                    THESIS TEMPORAL-DEID - COMMANDS REFERENCE
+================================================================================
+
+This file contains all the Python commands you need to run for testing and evaluation.
+Copy and paste these commands as needed.
+
+================================================================================
+BASELINE EVALUATION COMMANDS
+================================================================================
+
+Evaluate SAMURAI on DAVIS-2017:
+python evaluation/davis_baseline_eval.py --method samurai --sequences dog camel hike dance-twirl --dataset davis --dataset_root input --output_root output --save_path evaluation/results/baseline_results
+
+Evaluate TSP-SAM on DAVIS-2017:
+python evaluation/davis_baseline_eval.py --method tsp-sam --sequences dog camel hike dance-twirl --dataset davis --dataset_root input --output_root output --save_path evaluation/results/baseline_results
+
+Evaluate on Different Sequences (replace sequence names):
+python evaluation/davis_baseline_eval.py --method samurai --sequences bear surfing tennis --dataset davis --dataset_root input --output_root output --save_path evaluation/results/baseline_results
+
+Evaluate Single Sequence:
+python evaluation/davis_baseline_eval.py --method samurai --sequences dog --dataset davis --dataset_root input --output_root output --save_path evaluation/results/baseline_results
+
+================================================================================
+BASELINE RUNNING COMMANDS
+================================================================================
+
+Run SAMURAI Baseline on Full DAVIS-2017:
+python run_samurai_baseline.py --input_path input/davis2017 --output_path output/samurai_davis_full
+
+Run TSP-SAM Baseline on Full DAVIS-2017:
+python run_tsp_sam_baseline.py --input_path input/davis2017 --output_path output/tsp_sam_davis_full
+
+Run SAMURAI Baseline on Specific Sequence:
+python run_samurai_baseline.py --input_path input/davis2017 --output_path output/samurai_test --sequences dog
+
+Run TSP-SAM Baseline on Specific Sequence:
+python run_tsp_sam_baseline.py --input_path input/davis2017 --output_path output/tsp_sam_test --sequences dog
+
+================================================================================
+COMPARISON AND ANALYSIS COMMANDS
+================================================================================
+
+Generate Baseline Comparison Report:
+python generate_baseline_comparison_report.py
+
+Analyze Memory Mechanisms in TSP-SAM:
+python analyze_memory_mechanisms.py
+
+Run TED Talks Baseline with Pose Filtering:
+python run_ted_talks_baseline.py --input_path input/ted --output_path output/ted_baseline
+
+Generate All Visualizations for DAVIS:
+python evaluation/visualize_baseline_results.py --dataset davis
+
+Generate All Visualizations for TED (when available):
+python evaluation/visualize_baseline_results.py --dataset ted
+
+================================================================================
+UTILITY AND DEBUGGING COMMANDS
+================================================================================
+
+Check Directory Structure:
+ls evaluation/results/
+ls output/
+ls input/davis2017/JPEGImages/480p/
+
+View Evaluation Results:
+cat evaluation/results/baseline_results/samurai/davis/baseline_results_samurai_davis_*.csv
+cat evaluation/results/baseline_results/tsp-sam/davis/baseline_results_tsp-sam_davis_*.csv
+
+View Comparison Report:
+cat evaluation/reports/baseline_comparison_report.json
+
+View Generated Visualizations:
+ls evaluation/visualizations/
+ls evaluation/visualizations/baseline_comparison/davis/
+ls evaluation/visualizations/method_comparison/davis/
+
+================================================================================
+QUICK TESTING COMMANDS (Most Common)
+================================================================================
+
+Quick SAMURAI Test (4 sequences):
+python evaluation/davis_baseline_eval.py --method samurai --sequences dog camel hike dance-twirl --dataset davis --dataset_root input --output_root output --save_path evaluation/results/quick_test
+
+Quick TSP-SAM Test (4 sequences):
+python evaluation/davis_baseline_eval.py --method tsp-sam --sequences dog camel hike dance-twirl --dataset davis --dataset_root input --output_root output --save_path evaluation/results/quick_test
+
+Single Sequence Test:
+python evaluation/davis_baseline_eval.py --method samurai --sequences dog --dataset davis --dataset_root input --output_root output --save_path evaluation/results/single_test
+
+================================================================================
+COMMAND PARAMETERS EXPLANATION
+================================================================================
+
+--method: Choose between "samurai" or "tsp-sam"
+--sequences: List of sequence names to evaluate (e.g., "dog camel hike")
+--dataset: Currently only "davis" is supported
+--dataset_root: Path to input directory (usually "input")
+--output_root: Path to output directory (usually "output")
+--save_path: Where to save evaluation results
+--input_path: For baseline runners, path to dataset
+--output_path: For baseline runners, where to save outputs
+
+================================================================================
+SEQUENCE NAMES FOR TESTING
+================================================================================
+
+Popular sequences for testing:
+- dog (60 frames) - Good for motion testing
+- camel (90 frames) - High temporal consistency
+- hike (80 frames) - Moderate complexity
+- dance-twirl (90 frames) - Complex motion
+- bear (48 frames) - Short sequence
+- surfing (55 frames) - Water motion
+- tennis (70 frames) - Sports action
+- train (80 frames) - Large object tracking
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+1. Always run from the project root directory (D:\Thesis\thesis-temporal-deid)
+2. Make sure input/davis2017 exists with proper structure
+3. Check that output directories exist before running
+4. For full dataset runs, expect longer processing times
+5. Evaluation results are saved in evaluation/results/
+6. Baseline outputs are saved in output/
+
+================================================================================
+NEXT STEPS FOR YOUR THESIS
+================================================================================
+
+1. BASELINE REPRODUCTION: Complete (DAVIS-2017)
+2. MEMORY MECHANISM ANALYSIS: Run analyze_memory_mechanisms.py
+3. TED TALKS EVALUATION: Run run_ted_talks_baseline.py
+4. REAL MODEL COMPARISON: Run actual inference (not ground truth)
+5. ADVANCED METRICS: Implement TILR and BAF
