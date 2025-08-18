@@ -3,24 +3,36 @@
 Setup script for MaskAnyone-Temporal
 """
 
-from setuptools import setup, find_packages
-import os
+try:
+    from setuptools import setup, find_packages
+except ImportError:
+    print("setuptools not found. Installing...")
+    import subprocess
+    import sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools"])
+    from setuptools import setup, find_packages
 
 # Read requirements from requirements.txt
 def read_requirements():
-    with open('requirements.txt') as f:
-        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    try:
+        with open('requirements.txt') as f:
+            return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    except FileNotFoundError:
+        return []
 
 # Read README for long description
 def read_readme():
-    with open('README.md', 'r', encoding='utf-8') as f:
-        return f.read()
+    try:
+        with open('README.md', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "MaskAnyone-Temporal: Temporally-Consistent Privacy Protection for Behavioural-Science Video"
 
 setup(
     name="maskanyone-temporal",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Md Shahabub Alam",
+    author_email="nabid.aust37@gmail.com",
     description="Temporally-Consistent Privacy Protection for Behavioural-Science Video",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
@@ -51,11 +63,6 @@ setup(
         "docs": [
             "sphinx>=4.0",
             "sphinx-rtd-theme>=1.0",
-        ],
-    },
-    entry_points={
-        "console_scripts": [
-            "maskanyone-temporal=main:main",
         ],
     },
     include_package_data=True,
