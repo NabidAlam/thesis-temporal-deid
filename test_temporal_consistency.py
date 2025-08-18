@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath("temporal"))
 def test_temporal_consistency():
     """Test the temporal consistency functions"""
     
-    print("🧪 Testing Temporal Consistency Functions...")
+    print("Testing Temporal Consistency Functions...")
     
     # Test 1: Create test masks
     print("\n1. Creating test masks...")
@@ -38,7 +38,7 @@ def test_temporal_consistency():
             compute_motion_consistency,
             temporal_mask_smoothing
         )
-        print("\n✅ Successfully imported temporal consistency functions!")
+        print("\nSuccessfully imported temporal consistency functions!")
         
         # Test 3: Test consistency computation
         print("\n2. Testing temporal consistency computation...")
@@ -71,19 +71,19 @@ def test_temporal_consistency():
             smooth_area = np.sum(smooth > 0)
             print(f"   Frame {i}: Original area: {orig_area}, Smoothed area: {smooth_area}")
         
-        print("\n🎉 All temporal consistency tests passed!")
+        print("\nAll temporal consistency tests passed!")
         return True
         
     except ImportError as e:
-        print(f"\n❌ Failed to import temporal functions: {e}")
+        print(f"\nFailed to import temporal functions: {e}")
         return False
     except Exception as e:
-        print(f"\n❌ Error during testing: {e}")
+        print(f"\nError during testing: {e}")
         return False
 
 def test_opencv_optical_flow():
     """Test if OpenCV optical flow works"""
-    print("\n🔍 Testing OpenCV optical flow...")
+    print("\nTesting OpenCV optical flow...")
     
     try:
         # Create test images
@@ -123,12 +123,12 @@ if __name__ == "__main__":
     print(f"Temporal Functions: {'PASS' if temporal_ok else 'FAIL'}")
     
     if opencv_ok and temporal_ok:
-        print("\n🎉 All tests passed! Ready to run full pipeline.")
+        print("\nAll tests passed! Ready to run full pipeline.")
         print("\nNext steps:")
         print("1. Run: python temporal/tsp_sam_complete.py input/davis2017/JPEGImages/480p/dog output/tsp_sam_test/dog configs/tsp_sam_config.yaml --force")
         print("2. Check the temporal consistency scores in the output")
         print("3. Look for the 'TEMPORAL CONSISTENCY SUMMARY' at the end")
     else:
-        print("\n❌ Some tests failed. Please check the errors above.")
+        print("\nSome tests failed. Please check the errors above.")
     
     print("=" * 60)

@@ -1,9 +1,0 @@
-python main.py --dataset DAVIS --test_path D:/Thesis/thesis-temporal-deid/input/davis2017 --sequence dog --resume model_checkpoint/best_checkpoint.pth --gpu_ids 0 --output_dir D:/Thesis/thesis-temporal-deid/output/tsp_sam/davis
-
-
-python main.py --dataset DAVIS --test_path D:/Thesis/thesis-temporal-deid/input/davis2017 --sequence dog --resume model_checkpoint/best_checkpoint.pth --gpu_ids 0 --output_dir D:/Thesis/thesis-temporal-deid/output/tsp_sam/davis
-
-
-python main.py --dataset DAVIS --test_path D:/Thesis/thesis-temporal-deid/input/davis2017/JPEGImages/480p/dog --resume model_checkpoint/best_checkpoint.pth --gpu_ids 0 --output_dir D:/Thesis/thesis-temporal-deid/output/tsp_sam/davis
-
-python main.py --dataset TED --test_path D:/Thesis/thesis-temporal-deid/input/ted/video1.mp4 --resume model_checkpoint/best_checkpoint.pth --gpu_ids 0 --output_dir D:/Thesis/thesis-temporal-deid/output/tsp_sam/ted_video1

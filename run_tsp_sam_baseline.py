@@ -140,28 +140,28 @@ def run_tsp_sam_davis_baseline(input_path, output_path, checkpoint_path=None, se
     # Check if this is a DAVIS dataset
     davis_path = input_path
     if not (davis_path / 'JPEGImages').exists():
-        print(f"❌ Not a valid DAVIS dataset structure in {input_path}")
+        print(f"Not a valid DAVIS dataset structure in {input_path}")
         print("Expected: JPEGImages/480p/, Annotations/480p/, bboxes/")
         return
     
-    print(f"🎯 Running TSP-SAM baseline on DAVIS-2017 dataset")
+    print(f"Running TSP-SAM baseline on DAVIS-2017 dataset")
     print(f"📁 Input: {input_path}")
     print(f"📁 Output: {output_path}")
     
     # Find DAVIS sequences
     sequences_dir = davis_path / 'JPEGImages' / '480p'
     if not sequences_dir.exists():
-        print(f"❌ DAVIS sequences directory not found: {sequences_dir}")
+        print(f"DAVIS sequences directory not found: {sequences_dir}")
         return
     
     sequences = [seq for seq in sequences_dir.iterdir() if seq.is_dir()]
     if sequence:
         sequences = [seq for seq in sequences if seq.name == sequence]
         if not sequences:
-            print(f"❌ Sequence '{sequence}' not found")
+            print(f"Sequence '{sequence}' not found")
             return
     
-    print(f"📊 Found {len(sequences)} sequences")
+            print(f"Found {len(sequences)} sequences")
     
     # Process each sequence
     for seq_idx, seq_path in enumerate(sequences):
@@ -235,13 +235,13 @@ def run_tsp_sam_davis_baseline(input_path, output_path, checkpoint_path=None, se
                     print(f"    [Frame {frame_idx + 1}/{len(aligned_pairs)}] Saved stats: shape={mask_255.shape}, unique={np.unique(mask_255)}, min={mask_255.min()}, max={mask_255.max()}, area={np.sum(mask_255 > 0)}")
                 
             except Exception as e:
-                print(f"    ❌ Error processing frame {frame_idx}: {e}")
+                print(f"    Error processing frame {frame_idx}: {e}")
                 continue
         
-        print(f"  ✅ Completed sequence: {seq_path.name}")
+        print(f"  Completed sequence: {seq_path.name}")
     
-    print("\n🎉 DAVIS baseline completed using ground truth annotations!")
-    print(f"📁 Results saved to: {output_path}")
+    print("\nDAVIS baseline completed using ground truth annotations!")
+    print(f"Results saved to: {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description='Run TSP-SAM baseline on DAVIS-2017 dataset')
@@ -260,7 +260,7 @@ def main():
     
     # Validate input path
     if not os.path.exists(args.input_path):
-        print(f"❌ Input path does not exist: {args.input_path}")
+        print(f"Input path does not exist: {args.input_path}")
         return
     
     # Run DAVIS baseline

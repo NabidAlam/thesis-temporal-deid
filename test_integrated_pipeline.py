@@ -188,7 +188,7 @@ def intelligent_fusion(tsp_mask, sam_mask, pose_mask, previous_mask, fusion_meth
     sam_conf = compute_mask_confidence(sam_mask, "sam", previous_mask)
     pose_conf = compute_mask_confidence(pose_mask, "pose", previous_mask)
     
-    print(f"  Confidence scores - TSP: {tsp_conf:.3f}, SAM: {sam_conf:.3f}, Pose: {pose_conf:.3f}")
+    print(f"Confidence scores - TSP: {tsp_conf:.3f}, SAM: {sam_conf:.3f}, Pose: {pose_conf:.3f}")
     
     if fusion_method == "adaptive":
         max_conf = max(tsp_conf, sam_conf, pose_conf)
@@ -262,7 +262,7 @@ def intelligent_fusion(tsp_mask, sam_mask, pose_mask, previous_mask, fusion_meth
         fused_mask = (tsp_weight * tsp_mask + sam_weight * sam_mask + pose_weight * pose_mask).astype(np.uint8)
         fusion_weights = {"tsp": tsp_weight, "sam": sam_weight, "pose": pose_weight, "previous": 0.0}
     
-    print(f"  Method: {fusion_method_used}, Weights: {fusion_weights}")
+    print(f"Method: {fusion_method_used}, Weights: {fusion_weights}")
     return fused_mask, fusion_weights, fusion_method_used
 
 
@@ -309,8 +309,8 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    print(f"  Motion: {motion_magnitude:.3f}, Consistency: {temporal_consistency:.3f}")
-    print(f"  Adaptive kernel size: {kernel_size}x{kernel_size}")
+    print(f"Motion: {motion_magnitude:.3f}, Consistency: {temporal_consistency:.3f}")
+    print(f"Adaptive kernel size: {kernel_size}x{kernel_size}")
     
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     processed_mask = binary_mask.copy()
@@ -318,11 +318,11 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
     # Apply operations based on conditions
     if motion_magnitude > 0.3:
         processed_mask = cv2.morphologyEx(processed_mask, cv2.MORPH_OPEN, kernel)
-        print(f"  Applied opening with {kernel_size}x{kernel_size} kernel")
+        print(f"Applied opening with {kernel_size}x{kernel_size} kernel")
     
     if temporal_consistency < 0.7:
         processed_mask = cv2.morphologyEx(processed_mask, cv2.MORPH_CLOSE, kernel)
-        print(f"  Applied closing with {kernel_size}x{kernel_size} kernel")
+        print(f"Applied closing with {kernel_size}x{kernel_size} kernel")
     
     if motion_magnitude > 0.5:
         gradient_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(3, kernel_size-2), max(3, kernel_size-2)))
@@ -334,7 +334,7 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
         processed_mask = cv2.add(processed_mask, smoothed_gradient)
         processed_mask = (processed_mask > 0).astype(np.uint8) * 255
         
-        print(f"  Applied boundary smoothing")
+        print(f"Applied boundary smoothing")
     
     return processed_mask
 
@@ -368,7 +368,7 @@ def temporal_boundary_refinement(mask, previous_mask, next_mask=None, refinement
                                            temporal_boundary, refinement_strength, 0)
                     refined_mask = (blended > 127).astype(np.uint8) * 255
                     
-                    print(f"  Applied temporal boundary refinement (strength: {refinement_strength})")
+                    print(f"Applied temporal boundary refinement (strength: {refinement_strength})")
     
     return refined_mask
 
@@ -380,18 +380,18 @@ def advanced_post_processing(fused_mask, previous_mask, next_mask=None,
     if fused_mask is None or np.sum(fused_mask > 0) == 0:
         return fused_mask
     
-    print(f"  Starting advanced post-processing...")
-    print(f"  Input mask area: {np.sum(fused_mask > 0)}")
+    print(f"Starting advanced post-processing...")
+    print(f"Input mask area: {np.sum(fused_mask > 0)}")
     
     processed_mask = fused_mask.copy()
     
     # Step 1: Adaptive morphological operations
     if enable_adaptive_morph:
-        print(f"  Step 1: Adaptive morphological operations")
+        print(f"Step 1: Adaptive morphological operations")
         processed_mask = adaptive_morphological_operations(
             processed_mask, motion_magnitude, temporal_consistency
         )
-        print(f"  After morphological operations: {np.sum(processed_mask > 0)} pixels")
+        print(f"After morphological operations: {np.sum(processed_mask > 0)} pixels")
     
     # Step 2: Temporal boundary refinement
     if enable_temporal_refinement:
@@ -399,20 +399,20 @@ def advanced_post_processing(fused_mask, previous_mask, next_mask=None,
         processed_mask = temporal_boundary_refinement(
             processed_mask, previous_mask, next_mask
         )
-        print(f"  After temporal refinement: {np.sum(processed_mask > 0)} pixels")
+        print(f"After temporal refinement: {np.sum(processed_mask > 0)} pixels")
     
     # Step 3: Final consistency check
     if previous_mask is not None:
         final_consistency = compute_temporal_consistency_loss(processed_mask, previous_mask)
-        print(f"  Final temporal consistency: {final_consistency:.3f}")
+        print(f"Final temporal consistency: {final_consistency:.3f}")
         
         if final_consistency < temporal_consistency * 0.8:
-            print(f"  Consistency dropped significantly, applying temporal smoothing")
+            print(f"Consistency dropped significantly, applying temporal smoothing")
             blend_factor = 0.7
             processed_mask = cv2.addWeighted(processed_mask, blend_factor, 
                                            previous_mask, 1.0 - blend_factor, 0)
             processed_mask = (processed_mask > 127).astype(np.uint8) * 255
-            print(f"  After temporal smoothing: {np.sum(processed_mask > 0)} pixels")
+            print(f"After temporal smoothing: {np.sum(processed_mask > 0)} pixels")
     
     # Step 4: Quality validation
     final_area = np.sum(processed_mask > 0)
@@ -420,20 +420,20 @@ def advanced_post_processing(fused_mask, previous_mask, next_mask=None,
     
     if final_area > 0:
         area_change = abs(final_area - original_area) / original_area
-        print(f"  Area change: {area_change:.1%}")
+        print(f"Area change: {area_change:.1%}")
         
         if area_change > 0.3:
-            print(f"  [WARNING] Large area change detected ({area_change:.1%})")
+            print(f"[WARNING] Large area change detected ({area_change:.1%})")
     
-    print(f"  Advanced post-processing completed")
-    print(f"  Final mask area: {final_area} pixels")
+    print(f"Advanced post-processing completed")
+    print(f"Final mask area: {final_area} pixels")
     
     return processed_mask
 
 
 def simulate_integrated_pipeline():
     """Simulate the full integrated pipeline with all three fixes"""
-    print("🧪 Testing Full Integrated Pipeline")
+    print("Testing Full Integrated Pipeline")
     print("=" * 60)
     
     # Create test sequence
@@ -458,10 +458,10 @@ def simulate_integrated_pipeline():
     mask_3[30:90, 30:90] = 255
     mask_3[10:20, 10:20] = 255  # More noise
     
-    print(f"   Frame 0: Area = {np.sum(mask_0 > 0)}")
-    print(f"   Frame 1: Area = {np.sum(mask_1 > 0)}")
-    print(f"   Frame 2: Area = {np.sum(mask_2 > 0)}")
-    print(f"   Frame 3: Area = {np.sum(mask_3 > 0)}")
+    print(f"Frame 0: Area = {np.sum(mask_0 > 0)}")
+    print(f"Frame 1: Area = {np.sum(mask_1 > 0)}")
+    print(f"Frame 2: Area = {np.sum(mask_2 > 0)}")
+    print(f"Frame 3: Area = {np.sum(mask_3 > 0)}")
     
     # Simulate TSP-SAM, SAM, and Pose masks for each frame
     print("\n2. Simulating multi-source masks...")
@@ -488,16 +488,16 @@ def simulate_integrated_pipeline():
             current_consistency = compute_temporal_consistency_loss(tsp_masks[frame_idx], prev_mask)
             current_motion = compute_motion_consistency(tsp_masks[frame_idx], prev_mask)
             temporal_scores.append(current_consistency)
-            print(f"  Temporal Consistency: {current_consistency:.3f}")
-            print(f"  Motion Consistency: {current_motion:.3f}")
+            print(f"Temporal Consistency: {current_consistency:.3f}")
+            print(f"Motion Consistency: {current_motion:.3f}")
         else:
             current_consistency = 1.0
             current_motion = 0.0
             temporal_scores.append(1.0)
-            print(f"  First frame - perfect consistency")
+            print(f"First frame - perfect consistency")
         
         # FIX 2: Intelligent Fusion
-        print(f"  Applying Intelligent Fusion...")
+        print(f"Applying Intelligent Fusion...")
         fused_mask, fusion_weights, fusion_method = intelligent_fusion(
             tsp_masks[frame_idx], sam_masks[frame_idx], pose_masks[frame_idx], 
             prev_mask, "adaptive"
@@ -505,7 +505,7 @@ def simulate_integrated_pipeline():
         fusion_methods.append(fusion_method)
         
         # FIX 3: Advanced Post-Processing
-        print(f"  Applying Advanced Post-Processing...")
+        print(f"Applying Advanced Post-Processing...")
         final_mask = advanced_post_processing(
             fused_mask, prev_mask, None, current_motion, current_consistency,
             enable_adaptive_morph=True, enable_temporal_refinement=True
@@ -514,18 +514,18 @@ def simulate_integrated_pipeline():
         processed_masks.append(final_mask)
         prev_mask = final_mask.copy()
         
-        print(f"  Frame {frame_idx} completed:")
-        print(f"    Original area: {np.sum(tsp_masks[frame_idx] > 0)}")
-        print(f"    Fused area: {np.sum(fused_mask > 0)}")
-        print(f"    Final area: {np.sum(final_mask > 0)}")
-        print(f"    Fusion method: {fusion_method}")
+        print(f"Frame {frame_idx} completed:")
+        print(f"Original area: {np.sum(tsp_masks[frame_idx] > 0)}")
+        print(f"Fused area: {np.sum(fused_mask > 0)}")
+        print(f"Final area: {np.sum(final_mask > 0)}")
+        print(f"Fusion method: {fusion_method}")
     
     # Apply temporal smoothing to the sequence
     print(f"\n4. Applying temporal smoothing...")
     smoothed_masks = temporal_mask_smoothing(processed_masks, window_size=3)
     
-    print(f"   Original sequence length: {len(processed_masks)}")
-    print(f"   Smoothed sequence length: {len(smoothed_masks)}")
+    print(f"Original sequence length: {len(processed_masks)}")
+    print(f"Smoothed sequence length: {len(smoothed_masks)}")
     
     # Final analysis
     print(f"\n5. Final Analysis...")
@@ -535,15 +535,15 @@ def simulate_integrated_pipeline():
         min_consistency = np.min(temporal_scores)
         max_consistency = np.max(temporal_scores)
         
-        print(f"   Average Temporal Consistency: {avg_consistency:.3f}")
-        print(f"   Min Consistency: {min_consistency:.3f}")
-        print(f"   Max Consistency: {max_consistency:.3f}")
+        print(f"Average Temporal Consistency: {avg_consistency:.3f}")
+        print(f"Min Consistency: {min_consistency:.3f}")
+        print(f"Max Consistency: {max_consistency:.3f}")
         
         # Identify problematic frames
         low_consistency_frames = [i for i, score in enumerate(temporal_scores) if score < 0.6]
         if low_consistency_frames:
-            print(f"   Low Consistency Frames (< 0.6): {len(low_consistency_frames)}")
-            print(f"   Low Consistency Indices: {low_consistency_frames}")
+            print(f"Low Consistency Frames (< 0.6): {len(low_consistency_frames)}")
+            print(f"Low Consistency Indices: {low_consistency_frames}")
     
     # Fusion method analysis
     print(f"\n   Fusion Methods Used:")
@@ -551,7 +551,7 @@ def simulate_integrated_pipeline():
         print(f"     Frame {i}: {method}")
     
     # Area stability analysis
-    print(f"\n   Area Stability Analysis:")
+    print(f"\nArea Stability Analysis:")
     for i, (orig, proc, smooth) in enumerate(zip(tsp_masks, processed_masks, smoothed_masks)):
         orig_area = np.sum(orig > 0)
         proc_area = np.sum(proc > 0)
@@ -560,9 +560,9 @@ def simulate_integrated_pipeline():
         proc_change = abs(proc_area - orig_area) / orig_area if orig_area > 0 else 0
         smooth_change = abs(smooth_area - proc_area) / proc_area if proc_area > 0 else 0
         
-        print(f"     Frame {i}: Original={orig_area}, Processed={proc_area} ({proc_change:.1%}), Smoothed={smooth_area} ({smooth_change:.1%})")
+        print(f"Frame {i}: Original={orig_area}, Processed={proc_area} ({proc_change:.1%}), Smoothed={smooth_area} ({smooth_change:.1%})")
     
-    print(f"\n🎉 Full integrated pipeline test completed!")
+        print(f"\nFull integrated pipeline test completed!")
     return True
 
 
@@ -576,14 +576,14 @@ if __name__ == "__main__":
         if success:
             print(f"\nAll three fixes are working together successfully!")
             print(f"\nIntegrated System Status:")
-            print(f"   • Fix 1: Temporal Consistency Loss WORKING")
-            print(f"   • Fix 2: Intelligent Fusion Strategy WORKING")
-            print(f"   • Fix 3: Advanced Post-Processing WORKING")
+            print(f"   Temporal Consistency Loss WORKING")
+            print(f"   Intelligent Fusion Strategy WORKING")
+            print(f"   Advanced Post-Processing WORKING")
             print(f"\nExpected Performance Improvements:")
-            print(f"   • Temporal Stability: +25-40% improvement")
-            print(f"   • Mask Quality: +20-35% improvement")
-            print(f"   • Fusion Robustness: +30-45% improvement")
-            print(f"   • Overall Performance: +30-45% improvement in DAVIS metrics")
+            print(f"   Temporal Stability")
+            print(f"   Mask Quality")
+            print(f"   Fusion Robustness")
+            print(f"   Overall Performance")
         else:
             print(f"\nSome tests failed.")
     except Exception as e:

@@ -126,11 +126,11 @@ This is a research project for my Master's thesis. For questions or issues, plea
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Citation
+<!-- ## Citation
 
 If you use this code in your research, please cite:
 
-<!-- ```bibtex
+```bibtex
 @misc{maskanyone_temporal_2024,
   title={MaskAnyone-Temporal: Temporally-Consistent Privacy Protection for Behavioural-Science Video},
   author={Your Name},

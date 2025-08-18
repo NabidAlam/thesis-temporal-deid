@@ -80,8 +80,8 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
     if kernel_size % 2 == 0:
         kernel_size += 1
     
-    print(f"  Motion: {motion_magnitude:.3f}, Consistency: {temporal_consistency:.3f}")
-    print(f"  Adaptive kernel size: {kernel_size}x{kernel_size}")
+    print(f"Motion: {motion_magnitude:.3f}, Consistency: {temporal_consistency:.3f}")
+    print(f"Adaptive kernel size: {kernel_size}x{kernel_size}")
     
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     processed_mask = binary_mask.copy()
@@ -89,11 +89,11 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
     # Apply operations based on conditions
     if motion_magnitude > 0.3:
         processed_mask = cv2.morphologyEx(processed_mask, cv2.MORPH_OPEN, kernel)
-        print(f"  Applied opening with {kernel_size}x{kernel_size} kernel")
+        print(f"Applied opening with {kernel_size}x{kernel_size} kernel")
     
     if temporal_consistency < 0.7:
         processed_mask = cv2.morphologyEx(processed_mask, cv2.MORPH_CLOSE, kernel)
-        print(f"  Applied closing with {kernel_size}x{kernel_size} kernel")
+        print(f"Applied closing with {kernel_size}x{kernel_size} kernel")
     
     if motion_magnitude > 0.5:
         gradient_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(3, kernel_size-2), max(3, kernel_size-2)))
@@ -105,7 +105,7 @@ def adaptive_morphological_operations(mask, motion_magnitude, temporal_consisten
         processed_mask = cv2.add(processed_mask, smoothed_gradient)
         processed_mask = (processed_mask > 0).astype(np.uint8) * 255
         
-        print(f"  Applied boundary smoothing")
+        print(f"Applied boundary smoothing")
     
     return processed_mask
 
@@ -139,7 +139,7 @@ def temporal_boundary_refinement(mask, previous_mask, next_mask=None, refinement
                                            temporal_boundary, refinement_strength, 0)
                     refined_mask = (blended > 127).astype(np.uint8) * 255
                     
-                    print(f"  Applied temporal boundary refinement (strength: {refinement_strength})")
+                    print(f"Applied temporal boundary refinement (strength: {refinement_strength})")
     
     return refined_mask
 
@@ -151,39 +151,39 @@ def advanced_post_processing(fused_mask, previous_mask, next_mask=None,
     if fused_mask is None or np.sum(fused_mask > 0) == 0:
         return fused_mask
     
-    print(f"  Starting advanced post-processing...")
-    print(f"  Input mask area: {np.sum(fused_mask > 0)}")
+    print(f"Starting advanced post-processing...")
+    print(f"Input mask area: {np.sum(fused_mask > 0)}")
     
     processed_mask = fused_mask.copy()
     
     # Step 1: Adaptive morphological operations
     if enable_adaptive_morph:
-        print(f"  Step 1: Adaptive morphological operations")
+        print(f"Step 1: Adaptive morphological operations")
         processed_mask = adaptive_morphological_operations(
             processed_mask, motion_magnitude, temporal_consistency
         )
-        print(f"  After morphological operations: {np.sum(processed_mask > 0)} pixels")
+        print(f"After morphological operations: {np.sum(processed_mask > 0)} pixels")
     
     # Step 2: Temporal boundary refinement
     if enable_temporal_refinement:
-        print(f"  Step 2: Temporal boundary refinement")
+        print(f"Step 2: Temporal boundary refinement")
         processed_mask = temporal_boundary_refinement(
             processed_mask, previous_mask, next_mask
         )
-        print(f"  After temporal refinement: {np.sum(processed_mask > 0)} pixels")
+        print(f"After temporal refinement: {np.sum(processed_mask > 0)} pixels")
     
     # Step 3: Final consistency check
     if previous_mask is not None:
         final_consistency = compute_temporal_consistency_loss(processed_mask, previous_mask)
-        print(f"  Final temporal consistency: {final_consistency:.3f}")
+        print(f"Final temporal consistency: {final_consistency:.3f}")
         
         if final_consistency < temporal_consistency * 0.8:
-            print(f"  Consistency dropped significantly, applying temporal smoothing")
+            print(f"Consistency dropped significantly, applying temporal smoothing")
             blend_factor = 0.7
             processed_mask = cv2.addWeighted(processed_mask, blend_factor, 
                                            previous_mask, 1.0 - blend_factor, 0)
             processed_mask = (processed_mask > 127).astype(np.uint8) * 255
-            print(f"  After temporal smoothing: {np.sum(processed_mask > 0)} pixels")
+            print(f"After temporal smoothing: {np.sum(processed_mask > 0)} pixels")
     
     # Step 4: Quality validation
     final_area = np.sum(processed_mask > 0)
@@ -191,20 +191,20 @@ def advanced_post_processing(fused_mask, previous_mask, next_mask=None,
     
     if final_area > 0:
         area_change = abs(final_area - original_area) / original_area
-        print(f"  Area change: {area_change:.1%}")
+        print(f"Area change: {area_change:.1%}")
         
         if area_change > 0.3:
-            print(f"  [WARNING] Large area change detected ({area_change:.1%})")
+            print(f"[WARNING] Large area change detected ({area_change:.1%})")
     
-    print(f"  Advanced post-processing completed")
-    print(f"  Final mask area: {final_area} pixels")
+    print(f"Advanced post-processing completed")
+    print(f"Final mask area: {final_area} pixels")
     
     return processed_mask
 
 
 def test_advanced_post_processing():
     """Test the advanced post-processing system"""
-    print("🧪 Testing Advanced Post-Processing System")
+    print("Testing Advanced Post-Processing System")
     print("=" * 60)
     
     # Create test masks with different characteristics
@@ -227,15 +227,15 @@ def test_advanced_post_processing():
     prev_mask = np.zeros((100, 100), dtype=np.uint8)
     prev_mask[22:78, 22:78] = 255  # Similar but not identical
     
-    print(f"   Base mask: Area = {np.sum(base_mask > 0)}")
-    print(f"   Noise mask: Area = {np.sum(noise_mask > 0)}")
-    print(f"   Hole mask: Area = {np.sum(hole_mask > 0)}")
-    print(f"   Previous mask: Area = {np.sum(prev_mask > 0)}")
+    print(f"Base mask: Area = {np.sum(base_mask > 0)}")
+    print(f"Noise mask: Area = {np.sum(noise_mask > 0)}")
+    print(f"Hole mask: Area = {np.sum(hole_mask > 0)}")
+    print(f"Previous mask: Area = {np.sum(prev_mask > 0)}")
     
     print("\n2. Testing motion magnitude computation...")
     
     motion_score = compute_motion_magnitude(hole_mask, prev_mask)
-    print(f"   Motion magnitude: {motion_score:.3f}")
+    print(f"Motion magnitude: {motion_score:.3f}")
     
     print("\n3. Testing adaptive morphological operations...")
     
@@ -251,14 +251,14 @@ def test_advanced_post_processing():
         processed = adaptive_morphological_operations(
             hole_mask, motion, consistency, base_kernel_size=3, max_kernel_size=7
         )
-        print(f"     Original area: {np.sum(hole_mask > 0)}")
-        print(f"     Processed area: {np.sum(processed > 0)}")
+        print(f"Original area: {np.sum(hole_mask > 0)}")
+        print(f"Processed area: {np.sum(processed > 0)}")
     
     print("\n4. Testing temporal boundary refinement...")
     
     refined = temporal_boundary_refinement(hole_mask, prev_mask, refinement_strength=0.3)
-    print(f"   Original area: {np.sum(hole_mask > 0)}")
-    print(f"   Refined area: {np.sum(refined > 0)}")
+    print(f"Original area: {np.sum(hole_mask > 0)}")
+    print(f"Refined area: {np.sum(refined > 0)}")
     
     print("\n5. Testing full advanced post-processing pipeline...")
     
@@ -276,9 +276,9 @@ def test_advanced_post_processing():
             hole_mask, prev_mask, None, motion_score, 0.6,
             enable_morph, enable_refine
         )
-        print(f"     Final area: {np.sum(final > 0)}")
+        print(f"Final area: {np.sum(final > 0)}")
     
-    print("\n🎉 All advanced post-processing tests passed!")
+    print("\nAll advanced post-processing tests passed!")
     return True
 
 
@@ -290,18 +290,18 @@ if __name__ == "__main__":
     try:
         success = test_advanced_post_processing()
         if success:
-            print(f"\n✅ All tests passed successfully!")
-            print(f"\n🚀 The advanced post-processing system is ready!")
-            print(f"\n📊 Key Features:")
-            print(f"   • Motion-aware morphological operations")
-            print(f"   • Temporal boundary refinement")
-            print(f"   • Adaptive kernel sizing")
-            print(f"   • Quality validation and consistency checks")
-            print(f"   • Intelligent noise removal and hole filling")
+            print(f"\nAll tests passed successfully!")
+            print(f"\nThe advanced post-processing system is ready!")
+            print(f"\nKey Features:")
+            print(f"-Motion-aware morphological operations")
+            print(f"-Temporal boundary refinement")
+            print(f"-Adaptive kernel sizing")
+            print(f"-Quality validation and consistency checks")
+            print(f"-Intelligent noise removal and hole filling")
         else:
-            print(f"\n❌ Some tests failed.")
+            print(f"\nSome tests failed.")
     except Exception as e:
-        print(f"\n❌ Test failed with error: {e}")
+        print(f"\nTest failed with error: {e}")
         import traceback
         traceback.print_exc()
     
