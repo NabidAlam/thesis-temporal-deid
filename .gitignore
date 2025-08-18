@@ -32,6 +32,9 @@ evaluation/results/
 evaluation/reports/
 evaluation/visualizations/
 davis2017-evaluation/
+*.csv
+*.json
+baseline_comparison_*.csv
 
 # ===========================================
 # PYTHON COMPILED FILES
@@ -120,6 +123,19 @@ htmlcov/
 .coverage.*
 
 # ===========================================
+# DATA SCIENCE & ML FILES
+# ===========================================
+*.pkl
+*.pickle
+*.joblib
+*.hdf5
+*.h5
+*.parquet
+*.feather
+*.xlsx
+*.xls
+
+# ===========================================
 # GIT SUBMODULES (Keep .gitmodules but ignore content)
 # ===========================================
 # Note: .gitmodules should be tracked, but submodule content is managed separately
@@ -130,7 +146,16 @@ htmlcov/
 # Large model files
 samurai/sam2/checkpoints/
 tsp_sam_official/checkpoints/
+tsp_sam_official/snapshot/
 tspsam/model_checkpoint/
+
+# Analysis and comparison files
+analyze_baseline_results.py
+baseline_comparison_*.csv
+
+# Generated evaluation files
+evaluation/results/baseline_results/*/
+evaluation/results/baseline_comparison_*.csv
 
 # Temporary outputs
 temporal/__pycache__/

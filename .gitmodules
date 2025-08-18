@@ -7,9 +7,9 @@
 [submodule "tspsam"]
 	path = tspsam
 	url = https://github.com/NabidAlam/TSP-SAM.git
-[submodule "samurai"]
-	path = samurai
-	url = https://github.com/NabidAlam/samurai.git
+[submodule "samurai_official"]
+	path = samurai_official
+	url = https://github.com/yangchris11/samurai.git
 [submodule "tsp_sam_official"]
 	path = tsp_sam_official
 	url = https://github.com/WenjunHui1/TSP-SAM.git
