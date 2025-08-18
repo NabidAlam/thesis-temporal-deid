@@ -45,10 +45,10 @@ def generate_comparison_report():
     tsp_sam_results = load_evaluation_results("tsp-sam")
     
     if not samurai_results or not tsp_sam_results:
-        print("❌ Failed to load results")
+        print("Failed to load results")
         return
     
-    print("✅ Results loaded successfully!")
+    print("Results loaded successfully!")
     
     # Create comparison report
     report = {
@@ -113,8 +113,8 @@ def generate_comparison_report():
             }
         },
         "thesis_relevance": {
-            "baseline_establishment": "✅ Successfully reproduced both baselines on DAVIS-2017",
-            "method_comparison": "✅ Both methods show excellent performance on standard dataset",
+            "baseline_establishment": "Successfully reproduced both baselines on DAVIS-2017",
+            "method_comparison": "Both methods show excellent performance on standard dataset",
             "next_steps": [
                 "Run actual model inference (not ground truth) for real comparison",
                 "Evaluate on TED Talks dataset with pose filtering",
@@ -142,31 +142,31 @@ def generate_comparison_report():
     with open(output_path, 'w') as f:
         json.dump(report, f, indent=2)
     
-    print(f"📊 Comprehensive report saved to: {output_path}")
+    print(f"Comprehensive report saved to: {output_path}")
     
     # Print summary
     print("\n" + "="*80)
-    print("🎯 BASELINE COMPARISON SUMMARY")
+    print("BASELINE COMPARISON SUMMARY")
     print("="*80)
     
-    print(f"\n📈 Performance Metrics (Both Methods):")
-    print(f"   • Average IoU: {report['method_comparison']['samurai']['performance_summary']['average_iou']:.3f}")
-    print(f"   • Average Dice: {report['method_comparison']['samurai']['performance_summary']['average_dice']:.3f}")
-    print(f"   • Temporal Consistency: {report['method_comparison']['samurai']['performance_summary']['average_temporal_consistency']:.3f}")
+    print(f"\nPerformance Metrics (Both Methods):")
+    print(f"    Average IoU: {report['method_comparison']['samurai']['performance_summary']['average_iou']:.3f}")
+    print(f"    Average Dice: {report['method_comparison']['samurai']['performance_summary']['average_dice']:.3f}")
+    print(f"    Temporal Consistency: {report['method_comparison']['samurai']['performance_summary']['average_temporal_consistency']:.3f}")
     
-    print(f"\n🔍 Key Finding:")
-    print(f"   • Both baselines produce identical results (using ground truth)")
-    print(f"   • This confirms correct implementation of both methods")
-    print(f"   • Real performance differences will emerge with actual model inference")
+    print(f"\nKey Finding:")
+    print(f"    Both baselines produce identical results (using ground truth)")
+    print(f"    This confirms correct implementation of both methods")
+    print(f"    Real performance differences will emerge with actual model inference")
     
-    print(f"\n🚀 Next Steps for Your Thesis:")
+    print(f"\nNext Steps for Your Thesis:")
     for i, step in enumerate(report['thesis_relevance']['next_steps'], 1):
         print(f"   {i}. {step}")
     
-    print(f"\n📁 Detailed results available in:")
-    print(f"   • SAMURAI: evaluation/results/samurai_corrected/")
-    print(f"   • TSP-SAM: evaluation/results/tsp_sam_corrected/")
-    print(f"   • Comparison: evaluation/reports/baseline_comparison_report.json")
+    print(f"\nDetailed results available in:")
+    print(f"    SAMURAI: evaluation/results/samurai_corrected/")
+    print(f"    TSP-SAM: evaluation/results/tsp_sam_corrected/")
+    print(f"    Comparison: evaluation/reports/baseline_comparison_report.json")
     
     return report
 
