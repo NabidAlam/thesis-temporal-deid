@@ -81,47 +81,78 @@ class VideoEvaluator:
             raise ValueError(f"Unknown method: {method}")
     
     def _load_samurai_predictions(self, sequence):
-        """Load SAMURAI mask outputs"""
-        pred_dir = self.output_root / "samurai" / self.dataset / sequence
-        
-        if not pred_dir.exists():
-            print(f"Warning: SAMURAI output not found at {pred_dir}")
+        """Load SAMURAI mask outputs (supports multiple known layouts)"""
+        possible_paths = [
+            # New evaluation run structure
+            self.output_root / "full_evaluation" / "samurai_davis_baseline" / sequence,
+            # Full dataset baseline run
+            self.output_root / "samurai_davis_full" / sequence,
+            # Standalone baseline run
+            self.output_root / "samurai_davis_baseline" / sequence,
+            # Legacy structure (unlikely in this repo, kept for completeness)
+            self.output_root / "samurai" / self.dataset / sequence,
+        ]
+
+        pred_dir = None
+        for path in possible_paths:
+            if path.exists():
+                pred_dir = path
+                break
+
+        if pred_dir is None:
+            print(f"Warning: SAMURAI output not found for {sequence}")
+            print(f"Tried: {[str(p) for p in possible_paths]}")
             return {}
-        
+
         pred_masks = {}
-        mask_files = sorted(pred_dir.glob("mask_obj*_frame*.png"))
-        
-        print(f"Loading {len(mask_files)} SAMURAI predictions for {sequence}")
-        
+        # Our saved files are simple frame pngs: 00000.png, 00001.png, ...
+        mask_files = sorted(pred_dir.glob("*.png"))
+
+        print(f"Loading {len(mask_files)} SAMURAI predictions for {sequence} from {pred_dir}")
+
         for mask_file in mask_files:
-            # Parse filename: mask_obj0_frame00000.png
-            parts = mask_file.stem.split("_")
-            frame_idx = parts[-1].replace("frame", "")  # "00000"
-            
+            frame_idx = mask_file.stem  # "00000"
             mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
             if mask is not None:
                 pred_masks[frame_idx] = (mask > 127).astype(np.uint8)
-        
+
         return pred_masks
     
     def _load_tspsam_predictions(self, sequence):
-        pred_dir = self.output_root / "tsp_sam" / self.dataset / sequence
-        print(f"[DEBUG] Checking TSP-SAM prediction directory: {pred_dir}")
-        if not pred_dir.exists():
-            print(f"Warning: TSP-SAM output not found at {pred_dir}")
+        """Load TSP-SAM outputs (supports multiple known layouts)"""
+        possible_paths = [
+            # New evaluation run structure
+            self.output_root / "full_evaluation" / "tsp_sam_davis_baseline" / sequence,
+            # Full dataset baseline run
+            self.output_root / "tsp_sam_davis_full" / sequence,
+            # Standalone baseline run
+            self.output_root / "tsp_sam_davis_baseline" / sequence,
+            # Legacy structure (unlikely here)
+            self.output_root / "tsp_sam" / self.dataset / sequence,
+        ]
+
+        pred_dir = None
+        for path in possible_paths:
+            if path.exists():
+                pred_dir = path
+                break
+
+        if pred_dir is None:
+            print(f"Warning: TSP-SAM output not found for {sequence}")
+            print(f"Tried: {[str(p) for p in possible_paths]}")
             return {}
+
         pred_masks = {}
         mask_files = sorted(pred_dir.glob("*.png"))
-        print(f"[DEBUG] Found {len(mask_files)} TSP-SAM prediction files for {sequence}: {mask_files[:5]}")
+
+        print(f"Loading {len(mask_files)} TSP-SAM predictions for {sequence} from {pred_dir}")
+
         for mask_file in mask_files:
-            if "raw_" in mask_file.stem or "overlay_" in mask_file.stem:
-                continue
-            frame_idx = mask_file.stem.split("_")[0]
+            # Our files are simple frame pngs: 00000.png, 00001.png, ...
+            frame_idx = mask_file.stem
             mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
             if mask is not None:
                 pred_masks[frame_idx] = (mask > 127).astype(np.uint8)
-            else:
-                print(f"[DEBUG] Failed to load TSP-SAM prediction: {mask_file}")
         return pred_masks
     
     def compute_iou(self, pred_mask, gt_mask):
@@ -150,6 +181,14 @@ class VideoEvaluator:
             consistency_scores.append(iou)
         
         return np.mean(consistency_scores)
+
+    def compute_dice(self, pred_mask, gt_mask):
+        """Compute Dice coefficient"""
+        intersection = np.logical_and(pred_mask, gt_mask).sum()
+        total = pred_mask.sum() + gt_mask.sum()
+        if total == 0:
+            return 1.0 if intersection == 0 else 0.0
+        return (2 * intersection) / total
     
     # Placeholder for TILR (requires re-ID model like OSNet)
     def compute_tilr(self, pred_masks, original_frames_dir):
@@ -201,17 +240,22 @@ class VideoEvaluator:
                 'frame_id': frame_id,
                 'pred_area': int(pred_mask.sum())
             }
-            
+
             if gt_masks:
                 gt_mask = gt_masks[frame_id]
                 # Resize if necessary
                 if gt_mask.shape != pred_mask.shape:
-                    pred_mask = cv2.resize(pred_mask, (gt_mask.shape[1], gt_mask.shape[0]), 
-                                         interpolation=cv2.INTER_NEAREST)
+                    pred_mask = cv2.resize(
+                        pred_mask,
+                        (gt_mask.shape[1], gt_mask.shape[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
                 iou = self.compute_iou(pred_mask, gt_mask)
+                dice = self.compute_dice(pred_mask, gt_mask)
                 metrics['iou'] = float(iou)
+                metrics['dice'] = float(dice)
                 metrics['gt_area'] = int(gt_mask.sum())
-            
+
             frame_results.append(metrics)
         
         # Temporal consistency (always compute)
@@ -236,6 +280,12 @@ class VideoEvaluator:
             agg_metrics['min_iou'] = float(np.min(ious))
             agg_metrics['max_iou'] = float(np.max(ious))
             agg_metrics['std_iou'] = float(np.std(ious))
+            # Dice
+            dices = [r['dice'] for r in frame_results]
+            agg_metrics['mean_dice'] = float(np.mean(dices))
+            agg_metrics['min_dice'] = float(np.min(dices))
+            agg_metrics['max_dice'] = float(np.max(dices))
+            agg_metrics['std_dice'] = float(np.std(dices))
         
         if self.dataset == "ted":
             agg_metrics['tilr'] = tilr
@@ -271,6 +321,9 @@ class VideoEvaluator:
             }
             if 'mean_iou' in result:
                 sum_entry['mean_iou'] = result['mean_iou']
+                if 'mean_dice' in result:
+                    sum_entry['mean_dice'] = result['mean_dice']
+                    sum_entry['std_dice'] = result.get('std_dice', None)
             if 'tilr' in result:
                 sum_entry['tilr'] = result['tilr']
             if 'baf' in result:
@@ -340,6 +393,8 @@ def main():
         print(f"Average Temporal Consistency: {df['temporal_consistency'].mean():.3f}")
         if 'mean_iou' in df.columns:
             print(f"Average IoU: {df['mean_iou'].mean():.3f} ± {df['mean_iou'].std():.3f}")
+        if 'mean_dice' in df.columns:
+            print(f"Average Dice: {df['mean_dice'].mean():.3f} ± {df['std_dice'].mean():.3f}")
         if 'tilr' in df.columns:
             print(f"Average TILR: {df['tilr'].mean():.3f}")
         if 'baf' in df.columns:
