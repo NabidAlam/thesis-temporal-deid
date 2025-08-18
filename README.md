@@ -130,12 +130,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 If you use this code in your research, please cite:
 
-```bibtex
+<!-- ```bibtex
 @misc{maskanyone_temporal_2024,
   title={MaskAnyone-Temporal: Temporally-Consistent Privacy Protection for Behavioural-Science Video},
   author={Your Name},
   year={2024},
   note={Master's Thesis, University of Potsdam}
 }
-```
+``` -->
 
