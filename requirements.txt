@@ -1,0 +1,38 @@
+# Core Python packages
+numpy>=1.21.0
+opencv-python>=4.5.0
+Pillow>=8.0.0
+tqdm>=4.60.0
+
+# Deep Learning frameworks
+torch>=1.12.0
+torchvision>=0.13.0
+torchaudio>=0.12.0
+
+# Computer Vision and Image Processing
+scikit-image>=0.19.0
+imageio>=2.15.0
+
+# Data handling and analysis
+pandas>=1.3.0
+matplotlib>=3.5.0
+PyYAML>=6.0
+
+# Web framework (for API server)
+fastapi>=0.95.0
+uvicorn>=0.20.0
+
+# Utilities
+pathlib2>=2.3.0
+requests>=2.28.0
+
+# Optional packages (install separately if needed)
+# mediapipe>=0.8.0  # May have Python version compatibility issues
+# torch-scatter      # Uncomment if using PyTorch Geometric
+# torch-sparse       # Uncomment if using PyTorch Geometric
+
+# Note: Some packages may require specific Python versions
+# If you encounter compatibility issues, try:
+# pip install --upgrade pip
+# pip install -r requirements.txt --no-deps
+# Then install packages individually
