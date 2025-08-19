@@ -4,9 +4,6 @@
 [submodule "davis2017-evaluation"]
 	path = davis2017-evaluation
 	url = https://github.com/dbolya/davis2017-evaluation.git
-[submodule "tspsam"]
-	path = tspsam
-	url = https://github.com/NabidAlam/TSP-SAM.git
 [submodule "samurai_official"]
 	path = samurai_official
 	url = https://github.com/yangchris11/samurai.git
