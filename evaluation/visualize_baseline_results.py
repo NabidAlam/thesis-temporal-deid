@@ -48,11 +48,34 @@ class BaselineVisualizer:
     def load_evaluation_results(self, method, dataset="davis"):
         """Load evaluation results for a method and dataset"""
         # Try to find the most recent results
-        possible_paths = [
-            self.results_dir / f"{method}_corrected" / method / dataset,
-            self.results_dir / "baseline_results" / method / dataset,
-            self.results_dir / f"{method}_baseline" / dataset
-        ]
+        if method == "tsp-sam":
+            method_dir = "tsp-sam"  # Directory uses hyphen
+        else:
+            method_dir = method
+            
+        possible_paths = []
+        
+        # Handle different naming conventions
+        if method == "tsp-sam":
+            possible_paths = [
+                self.results_dir / "tsp_sam_baseline_evaluation" / method_dir / dataset,
+                self.results_dir / f"{method}_baseline_evaluation" / method_dir / dataset,
+                self.results_dir / f"{method}_corrected" / method_dir / dataset,
+                self.results_dir / "baseline_results" / method_dir / dataset,
+                self.results_dir / f"{method}_baseline" / dataset
+            ]
+        else:
+            possible_paths = [
+                self.results_dir / f"{method}_baseline_evaluation" / method_dir / dataset,
+                self.results_dir / f"{method}_corrected" / method_dir / dataset,
+                self.results_dir / "baseline_results" / method_dir / dataset,
+                self.results_dir / f"{method}_baseline" / dataset
+            ]
+        
+        # Debug: print the paths being checked
+        print(f"Looking for {method} results in:")
+        for path in possible_paths:
+            print(f"  {path} (exists: {path.exists()})")
         
         for path in possible_paths:
             if path.exists():
