@@ -214,6 +214,9 @@ comprehensive_evaluation.py
 docs/hybrid_architecture_design.md
 docs/pipeline_analysis.md
 
+# Thesis documentation and guides
+THESIS_METRICS_GUIDE.md
+
 # Docker and container files
 docker-compose*.yml
 docker/
