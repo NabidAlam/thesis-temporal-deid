@@ -165,3 +165,104 @@ tspsam/__pycache__/
 # Documentation builds
 docs/_build/
 docs/build/
+
+# ===========================================
+# NEW ADDITIONS - TEMPORAL PIPELINE & EXPERIMENT TRACKING
+# ===========================================
+# Weights & Biases experiment tracking
+wandb/
+*.wandb
+
+# Temporal pipeline outputs and temporary files
+temporal/output/
+temporal/results/
+temporal/temp/
+temporal/cache/
+temporal/debug_masks/
+temporal/temporal_memory/
+
+# Generated temporal analysis files
+temporal/*_masking_summary.py
+temporal/pipeline_summary.py
+temporal/check_ted_video.py
+temporal/compare_deidentification_methods.py
+temporal/convert_images_to_video.py
+
+# Generic memory pipeline outputs
+temporal/generic_memory_pipeline_outputs/
+temporal/memory_cache/
+
+# SAM2 API server logs and temporary files
+temporal/sam2_api_server_logs/
+temporal/sam2_temp/
+
+# MaskAnyone wrapper outputs
+temporal/maskanyone_outputs/
+temporal/maskanyone_cache/
+
+# TSP-SAM complete outputs
+temporal/tsp_sam_outputs/
+temporal/tsp_sam_cache/
+
+# Test and evaluation outputs
+test_*.py
+*_evaluation.py
+*_baseline*.py
+comprehensive_evaluation.py
+
+# Generated documentation and reports
+docs/hybrid_architecture_design.md
+docs/pipeline_analysis.md
+
+# Docker and container files
+docker-compose*.yml
+docker/
+docker_build/
+
+# Environment and configuration files
+app.env
+config.env
+*.env.local
+
+# Node.js and frontend build files
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/build/
+frontend/dist/
+
+# Database and cache files
+*.db
+*.sqlite
+*.sqlite3
+cache/
+temp/
+tmp/
+
+# Large video and image files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp
+
+# Archive and compressed files
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# Backup and version control files
+*.backup
+*.old
+*.orig
+*.rej
+*.bak
