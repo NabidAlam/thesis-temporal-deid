@@ -323,10 +323,10 @@ def test_enhanced_motion_detection():
     video_path = "input/ted/video9.mp4"
     
     if not os.path.exists(video_path):
-        print(f"❌ Video not found: {video_path}")
+        print(f"Video not found: {video_path}")
         return
     
-    print("🔍 Testing Enhanced Motion Detection on video9...")
+    print("Testing Enhanced Motion Detection on video9...")
     print("This should detect subtle speaker movements that the basic system missed.")
     
     # Load video
@@ -345,11 +345,11 @@ def test_enhanced_motion_detection():
     cap.release()
     
     if len(frames) < 2:
-        print("❌ Not enough frames loaded")
+        print("Not enough frames loaded")
         return
     
-    print(f"✅ Loaded {len(frames)} frames")
-    print("\n🔍 Analyzing motion between consecutive frames...")
+    print(f"Loaded {len(frames)} frames")
+    print("\nAnalyzing motion between consecutive frames...")
     
     # Test motion detection between consecutive frames
     motion_results = []
@@ -363,18 +363,18 @@ def test_enhanced_motion_detection():
         motion_results.append(motion_result)
         
         print(f"Frame {i-1} → {i}:")
-        print(f"  Motion: {'✅ YES' if motion_result['motion_detected'] else '❌ NO'}")
+        print(f"  Motion: {'YES' if motion_result['motion_detected'] else 'NO'}")
         print(f"  Confidence: {motion_result['confidence']:.3f}")
         print(f"  Type: {motion_result['motion_type']}")
         print(f"  Methods agreeing: {motion_result['methods_agreeing']}/{motion_result['total_methods']}")
         
         if motion_result['motion_detected']:
-            print(f"  🎯 MOTION DETECTED! Method: {motion_result['motion_type']}")
+            print(f"MOTION DETECTED! Method: {motion_result['motion_type']}")
         print()
     
     # Get overall statistics
     stats = detector.get_motion_statistics()
-    print("📊 MOTION DETECTION STATISTICS:")
+    print("MOTION DETECTION STATISTICS:")
     print(f"  Total frame pairs analyzed: {stats['total_detections']}")
     print(f"  Motion detected in: {stats['motion_detected']} frame pairs")
     print(f"  Motion rate: {stats['motion_rate']:.1%}")
@@ -382,12 +382,12 @@ def test_enhanced_motion_detection():
     
     # Summary
     motion_detected_count = sum(1 for result in motion_results if result['motion_detected'])
-    print(f"\n🎯 SUMMARY: Enhanced system detected motion in {motion_detected_count}/{len(motion_results)} frame pairs")
+    print(f"\nSUMMARY: Enhanced system detected motion in {motion_detected_count}/{len(motion_results)} frame pairs")
     
     if motion_detected_count > 0:
-        print("✅ SUCCESS: Enhanced motion detection is working! Subtle movements are now detectable.")
+        print("SUCCESS: Enhanced motion detection is working! Subtle movements are now detectable.")
     else:
-        print("⚠️  WARNING: Still no motion detected. Video may have extremely minimal movement.")
+        print("WARNING: Still no motion detected. Video may have extremely minimal movement.")
 
 
 if __name__ == "__main__":
