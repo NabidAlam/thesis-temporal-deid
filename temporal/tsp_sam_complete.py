@@ -103,11 +103,11 @@ import argparse
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # sys.path.append(os.path.abspath("tsp_sam"))
-sys.path.append(os.path.abspath("tspsam"))
+sys.path.append(os.path.abspath("tsp_sam_official"))
 sys.path.append(os.path.abspath("temporal"))
 
 # from tsp_sam.lib.pvtv2_afterTEM import Network
-from tspsam.lib.pvtv2_afterTEM import Network
+from tsp_sam_official.lib.pvtv2_afterTEM import Network
 # from TSP_SPAM.lib.pvtv2_afterTEM import Network
 
 from utils import save_mask_and_frame, resize_frame
@@ -528,6 +528,29 @@ def intelligent_fusion(tsp_mask, sam_mask, pose_mask, previous_mask, fusion_meth
         
         fused_mask = (tsp_weight * tsp_mask + sam_weight * sam_mask + pose_weight * pose_mask).astype(np.uint8)
         fusion_weights = {"tsp": tsp_weight, "sam": sam_weight, "pose": pose_weight, "previous": 0.0}
+    
+    elif fusion_method == "tsp+sam":
+        # TSP + SAM fusion: prioritize TSP but enhance with SAM when available
+        fusion_method_used = "tsp+sam"
+        
+        # Start with TSP mask as base
+        fused_mask = tsp_mask.copy()
+        
+        # If SAM mask is available and has reasonable area, blend it in
+        if sam_conf > 0.3 and np.sum(sam_mask > 0) > 1000:  # Minimum area threshold
+            # Use SAM to refine TSP mask
+            sam_weight = 0.4
+            tsp_weight = 0.6
+            fused_mask = (tsp_weight * tsp_mask + sam_weight * sam_mask).astype(np.uint8)
+            print(f"[Fusion] TSP+SAM: Blending TSP ({tsp_weight:.1f}) + SAM ({sam_weight:.1f})")
+        else:
+            # Fallback to TSP only
+            tsp_weight = 1.0
+            sam_weight = 0.0
+            print(f"[Fusion] TSP+SAM: Using TSP only (SAM confidence: {sam_conf:.3f})")
+        
+        # Set weights
+        fusion_weights = {"tsp": tsp_weight, "sam": sam_weight, "pose": 0.0, "previous": 0.0}
     
     else:  # hybrid
         # Hybrid approach: combine confidence and temporal consistency
@@ -1052,6 +1075,7 @@ def parse_args():
     parser.add_argument("output_base_dir")
     parser.add_argument("config_path")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--max_frames", type=int, default=None, help="Process at most this many frames")
     return parser.parse_args()
 
 from glob import glob
@@ -1088,7 +1112,7 @@ def load_davis_annotations(input_root, seq_name):
     return masks
 
 
-def run_tsp_sam(input_path, output_path_base, config_path, force=False):
+def run_tsp_sam(input_path, output_path_base, config_path, force=False, max_frames=None):
     import shutil
     from collections import deque
 
@@ -1301,7 +1325,12 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
         mask_sequence_buffer = []
 
         with tqdm(total=total_frames // frame_stride) as pbar:
+            processed_frames = 0
             for idx, frame_data in frame_iter:
+                
+                # Initialize temporal consistency variables
+                current_consistency = 1.0
+                current_motion_consistency = 1.0
                 
                 if temporal_smoothing and reset_memory_every and idx % reset_memory_every == 0:
                     print(f"[DEBUG] Resetting memory at frame {idx}")
@@ -1310,6 +1339,10 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 
                 if idx % frame_stride != 0:
                     continue
+
+                if max_frames is not None and processed_frames >= max_frames:
+                    print(f"Reached max_frames={max_frames}. Stopping early.")
+                    break
 
                 if dataset_mode == "davis":
                     frame = cv2.imread(str(frame_data))
@@ -1332,9 +1365,27 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
 
                 if use_sam:
                     bbox = extract_bbox_from_mask(tsp_mask)
-                    if bbox:
-                        sam_raw = sam_wrapper.segment_with_box(rgb, str(bbox))
-                        sam_mask = cv2.resize(sam_raw, tsp_mask.shape[::-1], interpolation=cv2.INTER_NEAREST)
+                    print(f"[SAM] TSP mask area: {np.sum(tsp_mask > 0)}, bbox: {bbox}")
+                    if bbox and np.sum(tsp_mask > 0) > 100:  # Only if TSP mask has reasonable area
+                        try:
+                            print(f"[SAM] Extracting bbox: {bbox}")
+                            # Ensure bbox is within image bounds
+                            h, w = rgb.shape[:2]
+                            bbox[0] = max(0, min(bbox[0], w-1))
+                            bbox[1] = max(0, min(bbox[1], h-1))
+                            bbox[2] = max(bbox[0]+1, min(bbox[2], w))
+                            bbox[3] = max(bbox[1]+1, min(bbox[3], h))
+                            print(f"[SAM] Adjusted bbox: {bbox}")
+                            
+                            sam_raw = sam_wrapper.segment_with_box(rgb, str(bbox))
+                            sam_mask = cv2.resize(sam_raw, tsp_mask.shape[::-1], interpolation=cv2.INTER_NEAREST)
+                            print(f"[SAM] Generated mask with area: {np.sum(sam_mask > 0)}")
+                        except Exception as e:
+                            print(f"[SAM] Error generating mask: {e}")
+                            sam_mask = np.zeros_like(tsp_mask)
+                    else:
+                        print(f"[SAM] No valid bbox or TSP mask too small (area: {np.sum(tsp_mask > 0)})")
+                        sam_mask = np.zeros_like(tsp_mask)
                             
                 if use_pose:
                     # keypoints = extract_pose_keypoints(rgb) # Temporarily disabled
@@ -1390,8 +1441,10 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 print(f"\n[Fusion] Frame {idx}: Starting intelligent fusion...")
                 
                 # Get fusion method from config or use adaptive
-                fusion_strategy = config.get("fusion_strategy", "adaptive")
+                fusion_strategy = config.get("fusion_strategy", config.get("fusion_method", "adaptive"))
                 print(f"[Fusion] Using strategy: {fusion_strategy}")
+                print(f"[Fusion] Config fusion_method: {config.get('fusion_method', 'not set')}")
+                print(f"[Fusion] Config fusion_strategy: {config.get('fusion_strategy', 'not set')}")
                 
                 # Apply intelligent fusion
                 fused_mask, fusion_weights, fusion_method_used = intelligent_fusion(
@@ -1574,6 +1627,10 @@ def run_tsp_sam(input_path, output_path_base, config_path, force=False):
                 ])
 
                 pbar.update(1)
+                processed_frames += 1
+                if max_frames is not None and processed_frames >= max_frames:
+                    print(f"Reached max_frames={max_frames}. Stopping early.")
+                    break
 
 
     # TEMPORAL CONSISTENCY SUMMARY

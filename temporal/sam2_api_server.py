@@ -22,6 +22,10 @@ app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SAM2_API")  # ← Added logger instance
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "device": DEVICE, "model": MODEL_TYPE}
+
 
 # Device and model setup
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
