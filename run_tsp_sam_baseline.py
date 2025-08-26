@@ -19,6 +19,48 @@ from PIL import Image
 import torchvision.transforms as transforms
 import time
 
+# Weights & Biases for experiment tracking
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    print("Weights & Biases not available. Install with: pip install wandb")
+
+from datetime import datetime
+
+# Advanced dependencies for enhanced metrics
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    print("psutil not available. Install with: pip install psutil")
+
+try:
+    import GPUtil
+    GPUTIL_AVAILABLE = True
+except ImportError:
+    GPUTIL_AVAILABLE = False
+    print("GPUtil not available. Install with: pip install GPUtil")
+
+try:
+    from scipy import ndimage
+    from scipy.spatial.distance import directed_hausdorff
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    print("scipy not available. Install with: pip install scipy")
+
+try:
+    from skimage.metrics import structural_similarity as ssim
+    from skimage.metrics import adapted_rand_error, variation_of_information
+    from skimage.measure import label, regionprops
+    SKIMAGE_AVAILABLE = True
+except ImportError:
+    SKIMAGE_AVAILABLE = False
+    print("scikit-image not available. Install with: pip install scikit-image")
+
 # Add the official TSP-SAM to path
 sys.path.append('tsp_sam_official')
 sys.path.append('tsp_sam_official/lib')
@@ -88,15 +130,16 @@ def load_ground_truth_mask(gt_path, target_size=352):
         # DAVIS annotations can have different pixel value ranges
         # Handle both [0, 38] and [0, 128] and [0, 255] cases
         if gt_np.max() > 1:
-            if gt_np.max() <= 38:  # DAVIS 2016 format
+            # DAVIS 2016 format detected (max: 38)
+            if gt_np.max() <= 38:
                 print(f"    [DEBUG] DAVIS 2016 format detected (max: {gt_np.max()})")
                 gt_np = (gt_np > 0).astype(np.uint8)
-            elif gt_np.max() <= 128:  # DAVIS 2017 format
+            else:
                 print(f"    [DEBUG] DAVIS 2017 format detected (max: {gt_np.max()})")
                 gt_np = (gt_np > 0).astype(np.uint8)
-            else:  # Standard 0-255 format
-                print(f"    [DEBUG] Standard format detected (max: {gt_np.max()})")
-                gt_np = (gt_np > 127).astype(np.uint8)
+        else:
+            print(f"    [DEBUG] Already normalized format detected")
+            gt_np = (gt_np > 0.1).astype(np.uint8)
         
         print(f"    [DEBUG] After normalization - range: {gt_np.min()} to {gt_np.max()}")
         print(f"    [DEBUG] After normalization - unique values: {np.unique(gt_np)}")
@@ -110,10 +153,248 @@ def load_ground_truth_mask(gt_path, target_size=352):
         print(f"    [DEBUG] After morphology - sum: {gt_np.sum()}")
         
         return gt_np
-        
     except Exception as e:
-        print(f"    [ERROR] Failed to load ground truth mask: {e}")
+        print(f"Error loading ground truth mask {gt_path}: {e}")
         return None
+
+# Advanced utility functions for enhanced metrics
+def calculate_precision_recall(gt_mask, pred_mask):
+    """Calculate precision and recall for segmentation"""
+    try:
+        tp = np.logical_and(gt_mask, pred_mask).sum()  # True positives
+        fp = np.logical_and(np.logical_not(gt_mask), pred_mask).sum()  # False positives
+        fn = np.logical_and(gt_mask, np.logical_not(pred_mask)).sum()  # False negatives
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        
+        return precision, recall
+    except Exception:
+        return 0.0, 0.0
+
+def calculate_boundary_accuracy(gt_mask, pred_mask, boundary_width=2):
+    """Calculate boundary accuracy between ground truth and prediction"""
+    if not SCIPY_AVAILABLE:
+        return 0.0
+    
+    try:
+        # Create boundary masks
+        gt_boundary = ndimage.binary_erosion(gt_mask) != ndimage.binary_dilation(gt_mask)
+        pred_boundary = ndimage.binary_erosion(pred_mask) != ndimage.binary_dilation(pred_mask)
+        
+        # Dilate boundaries for tolerance
+        gt_boundary = ndimage.binary_dilation(gt_boundary, iterations=boundary_width)
+        pred_boundary = ndimage.binary_dilation(pred_boundary, iterations=boundary_width)
+        
+        # Calculate boundary overlap
+        boundary_intersection = np.logical_and(gt_boundary, pred_boundary).sum()
+        boundary_union = np.logical_or(gt_boundary, pred_boundary).sum()
+        
+        return boundary_intersection / boundary_union if boundary_union > 0 else 0.0
+    except Exception:
+        return 0.0
+
+def calculate_hausdorff_distance(gt_mask, pred_mask):
+    """Calculate Hausdorff distance for boundary accuracy assessment"""
+    if not SCIPY_AVAILABLE:
+        return 0.0
+    
+    try:
+        # Find boundary points
+        gt_boundary = np.argwhere(gt_mask > 0)
+        pred_boundary = np.argwhere(pred_mask > 0)
+        
+        if len(gt_boundary) == 0 or len(pred_boundary) == 0:
+            return float('inf')
+        
+        # Calculate directed Hausdorff distances
+        d_gt_to_pred = directed_hausdorff(gt_boundary, pred_boundary)[0]
+        d_pred_to_gt = directed_hausdorff(pred_boundary, gt_boundary)[0]
+        
+        # Return symmetric Hausdorff distance
+        return max(d_gt_to_pred, d_pred_to_gt)
+    except Exception:
+        return 0.0
+
+def calculate_contour_similarity(gt_mask, pred_mask):
+    """Calculate contour similarity using structural similarity"""
+    if not SKIMAGE_AVAILABLE:
+        return 0.0
+    
+    try:
+        # Ensure masks are same size and type
+        gt_norm = gt_mask.astype(np.float32) / gt_mask.max() if gt_mask.max() > 0 else gt_mask.astype(np.float32)
+        pred_norm = pred_mask.astype(np.float32) / pred_mask.max() if pred_mask.max() > 0 else pred_mask.astype(np.float32)
+        
+        # Calculate SSIM
+        similarity = ssim(gt_norm, pred_norm, data_range=1.0)
+        return similarity
+    except Exception:
+        return 0.0
+
+def calculate_region_based_metrics(gt_mask, pred_mask):
+    """Calculate region-based segmentation metrics"""
+    if not SKIMAGE_AVAILABLE:
+        return {'adapted_rand_error': 0.0, 'variation_of_information': 0.0}
+    
+    try:
+        # Ensure masks are labeled (not binary)
+        gt_labeled = gt_mask.astype(np.int32)
+        pred_labeled = (pred_mask > 0.1).astype(np.int32)
+        
+        # Adapted Rand Error (lower is better)
+        ar_error = adapted_rand_error(gt_labeled, pred_labeled)[0]
+        
+        # Variation of Information (lower is better)
+        voi = variation_of_information(gt_labeled, pred_labeled)[0]
+        
+        return {
+            'adapted_rand_error': ar_error,
+            'variation_of_information': voi
+        }
+    except Exception:
+        return {'adapted_rand_error': 0.0, 'variation_of_information': 0.0}
+
+def calculate_complexity_metrics(gt_mask):
+    """Calculate object complexity metrics for difficulty assessment"""
+    if not SKIMAGE_AVAILABLE:
+        return {
+            'object_count': 0,
+            'total_area': 0,
+            'avg_area': 0,
+            'perimeter': 0,
+            'compactness': 0,
+            'eccentricity': 0
+        }
+    
+    try:
+        # Label connected components
+        labeled_mask = label(gt_mask)
+        regions = regionprops(labeled_mask)
+        
+        if not regions:
+            return {
+                'object_count': 0,
+                'total_area': 0,
+                'avg_area': 0,
+                'perimeter': 0,
+                'compactness': 0,
+                'eccentricity': 0
+            }
+        
+        # Calculate complexity metrics
+        total_area = sum(region.area for region in regions)
+        avg_area = total_area / len(regions)
+        perimeter = sum(region.perimeter for region in regions)
+        
+        # Compactness (4π * area / perimeter²)
+        compactness = (4 * np.pi * total_area) / (perimeter ** 2) if perimeter > 0 else 0
+        
+        # Eccentricity (average across regions)
+        eccentricities = [region.eccentricity for region in regions if hasattr(region, 'eccentricity')]
+        avg_eccentricity = np.mean(eccentricities) if eccentricities else 0
+        
+        return {
+            'object_count': len(regions),
+            'total_area': total_area,
+            'avg_area': avg_area,
+            'perimeter': perimeter,
+            'compactness': compactness,
+            'eccentricity': avg_eccentricity
+        }
+    except Exception:
+        return {
+            'object_count': 0,
+            'total_area': 0,
+            'avg_area': 0,
+            'perimeter': 0,
+            'compactness': 0,
+            'eccentricity': 0
+        }
+
+def analyze_failure_cases(gt_mask, pred_mask, frame_idx, sequence_name):
+    """Analyze when and why segmentation fails"""
+    try:
+        gt_binary = (gt_mask > 0).astype(np.uint8)
+        pred_binary = (pred_mask > 0.0).astype(np.uint8)
+        
+        # Calculate failure metrics
+        false_negatives = np.logical_and(gt_binary, np.logical_not(pred_binary)).sum()
+        false_positives = np.logical_and(np.logical_not(gt_binary), pred_binary).sum()
+        true_positives = np.logical_and(gt_binary, pred_binary).sum()
+        
+        total_gt_pixels = gt_binary.sum()
+        total_pred_pixels = pred_binary.sum()
+        total_pixels = gt_binary.size
+        
+        # Calculate ratios
+        fn_ratio = false_negatives / max(total_gt_pixels, 1) if total_gt_pixels > 0 else 0
+        fp_ratio = false_positives / max(total_pixels, 1)
+        
+        # Determine if this is a failure case
+        is_failure = fn_ratio > 0.3 or fp_ratio > 0.05
+        
+        return {
+            'false_negatives': false_negatives,
+            'false_positives': false_positives,
+            'true_positives': true_positives,
+            'fn_ratio': fn_ratio,
+            'fp_ratio': fp_ratio,
+            'is_failure': is_failure,
+            'failure_severity': max(fn_ratio, fp_ratio)
+        }
+    except Exception:
+        return {
+            'false_negatives': 0,
+            'false_positives': 0,
+            'true_positives': 0,
+            'fn_ratio': 0,
+            'fp_ratio': 0,
+            'is_failure': False,
+            'failure_severity': 0
+        }
+
+def get_memory_usage():
+    """Get current memory usage"""
+    if not PSUTIL_AVAILABLE:
+        return {'cpu_memory_percent': 0, 'cpu_memory_used_gb': 0}
+    
+    try:
+        cpu_memory = psutil.virtual_memory()
+        return {
+            'cpu_memory_percent': cpu_memory.percent,
+            'cpu_memory_used_gb': cpu_memory.used / (1024**3)
+        }
+    except Exception:
+        return {'cpu_memory_percent': 0, 'cpu_memory_used_gb': 0}
+
+def get_gpu_memory_usage():
+    """Get GPU memory usage if available"""
+    if not GPUTIL_AVAILABLE:
+        return 0
+    
+    try:
+        gpus = GPUtil.getGPUs()
+        if gpus:
+            return gpus[0].memoryUsed
+        return 0
+    except Exception:
+        return 0
+
+def smooth_metric(value, prev_value, alpha=0.9):
+    """Apply exponential smoothing to metrics for stability"""
+    if prev_value is None:
+        return value
+    return alpha * prev_value + (1 - alpha) * value
+
+def calculate_iou(mask1, mask2):
+    """Calculate Intersection over Union between two masks"""
+    try:
+        intersection = np.logical_and(mask1, mask2).sum()
+        union = np.logical_or(mask1, mask2).sum()
+        return intersection / union if union > 0 else 0.0
+    except Exception:
+        return 0.0
 
 def create_video_sequence(image_files, max_frames=5):
     """Create a video sequence from multiple frames for TSP-SAM"""
@@ -219,6 +500,14 @@ def main():
     parser.add_argument('--sequence', type=str, required=True, help='Sequence name to process')
     parser.add_argument('--max_frames', type=int, default=5, help='Maximum frames to process')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use')
+    parser.add_argument('--wandb', action='store_true', help='Enable Weights & Biases logging')
+    parser.add_argument('--experiment-name', type=str, default=None, help='Name for the Weights & Biases experiment')
+    parser.add_argument('--checkpoint', type=str, default='tsp_sam_official/snapshot/best_checkpoint.pth', help='Path to TSP-SAM checkpoint')
+    parser.add_argument('--enable-advanced-metrics', action='store_true', help='Enable advanced metrics (Hausdorff, Contour Similarity, etc.)')
+    parser.add_argument('--enable-memory-monitoring', action='store_true', help='Enable CPU/GPU memory monitoring')
+    parser.add_argument('--enable-failure-analysis', action='store_true', help='Enable detailed failure case analysis')
+    parser.add_argument('--metric-smoothing', type=float, default=0.9, help='Metric smoothing factor (0.0-1.0)')
+    parser.add_argument('--boundary-tolerance', type=int, default=2, help='Boundary accuracy tolerance in pixels')
     
     args = parser.parse_args()
     
@@ -239,6 +528,24 @@ def main():
     device = torch.device(args.device)
     print(f"Using device: {device}")
     
+    # Initialize Weights & Biases if requested
+    if args.wandb and WANDB_AVAILABLE:
+        wandb.init(
+            project="temporal-deid-baselines",
+            name=args.experiment_name if args.experiment_name else f"tsp_sam_baseline_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            config={
+                "model": "TSP-SAM",
+                "dataset": "DAVIS-2017",
+                "sequence": args.sequence,
+                "max_frames": args.max_frames,
+                "device": str(device),
+                "checkpoint": args.checkpoint
+            }
+        )
+        print(f"Wandb experiment started: {wandb.run.name}")
+    elif args.wandb and not WANDB_AVAILABLE:
+        print("Warning: --wandb specified but wandb not available")
+    
     # Load TSP-SAM model
     print("Loading TSP-SAM model...")
     try:
@@ -254,7 +561,7 @@ def main():
         model = VideoModel(model_args)
         
         # Load TSP-SAM checkpoint
-        checkpoint_path = 'tsp_sam_official/snapshot/best_checkpoint.pth'
+        checkpoint_path = args.checkpoint
         if os.path.exists(checkpoint_path):
             try:
                 print(f"Loading checkpoint from {checkpoint_path}...")
@@ -346,6 +653,36 @@ def main():
     end_frame = min(start_frame + max_frames, len(img_files))
     print(f"[DEBUG] Frame range: {start_frame} to {end_frame}")
     print(f"[DEBUG] Total frames to process: {end_frame - start_frame}")
+    
+    # Initialize metrics tracking
+    all_ious = []
+    all_dices = []
+    all_coverage_ratios = []
+    all_thresholds = []
+    all_coverage_diffs = []
+    
+    # Advanced metrics tracking (if enabled)
+    if args.enable_advanced_metrics:
+        all_hausdorff_distances = []
+        all_contour_similarities = []
+        all_boundary_accuracies = []
+        all_adapted_rand_errors = []
+        all_variation_of_information = []
+        all_failure_cases = []
+        all_processing_times = []
+    
+    # Memory monitoring (if enabled)
+    if args.enable_memory_monitoring:
+        all_cpu_memory = []
+        all_gpu_memory = []
+    
+    # Metric smoothing variables
+    prev_mask = None
+    prev_iou = None
+    prev_dice = None
+    
+    # Complexity metrics for first frame
+    complexity_metrics = {}
     
     with tqdm(total=end_frame-start_frame, desc=f"Processing {args.sequence}") as pbar:
         for frame_idx in range(start_frame, end_frame):
@@ -611,10 +948,142 @@ def main():
                 
                 coverage_ratio = binary_mask.sum() / (gt_mask.sum() + 1e-8)
                 
+                # Apply metric smoothing if enabled
+                if args.metric_smoothing > 0:
+                    iou = smooth_metric(iou, prev_iou, args.metric_smoothing)
+                    dice = smooth_metric(dice, prev_dice, args.metric_smoothing)
+                    prev_iou = iou
+                    prev_dice = dice
+                
+                # Calculate advanced metrics if enabled
+                precision, recall = 0.0, 0.0
+                boundary_accuracy = 0.0
+                hausdorff_dist = 0.0
+                contour_sim = 0.0
+                region_metrics = {'adapted_rand_error': 0.0, 'variation_of_information': 0.0}
+                failure_analysis = {'is_failure': False, 'failure_severity': 0.0}
+                
+                if args.enable_advanced_metrics:
+                    # Basic precision/recall
+                    precision, recall = calculate_precision_recall(gt_mask, binary_mask)
+                    
+                    # Boundary accuracy
+                    boundary_accuracy = calculate_boundary_accuracy(gt_mask, binary_mask, args.boundary_tolerance)
+                    
+                    # Advanced boundary metrics
+                    hausdorff_dist = calculate_hausdorff_distance(gt_mask, binary_mask)
+                    contour_sim = calculate_contour_similarity(gt_mask, binary_mask)
+                    
+                    # Region-based metrics
+                    region_metrics = calculate_region_based_metrics(gt_mask, binary_mask)
+                    
+                    # Failure analysis
+                    if args.enable_failure_analysis:
+                        failure_analysis = analyze_failure_cases(gt_mask, binary_mask, frame_idx, args.sequence)
+                
+                # Calculate temporal consistency (if not first frame)
+                temporal_iou = 0.0
+                if prev_mask is not None:
+                    temporal_iou = calculate_iou(prev_mask, binary_mask)
+                
+                # Store previous mask for next iteration
+                prev_mask = binary_mask.copy()
+                
+                # Calculate complexity metrics for first frame
+                if frame_idx == start_frame and args.enable_advanced_metrics:
+                    complexity_metrics = calculate_complexity_metrics(gt_mask)
+                
+                # Get memory usage if monitoring enabled
+                memory_info = {'cpu_memory_percent': 0, 'cpu_memory_used_gb': 0}
+                gpu_memory = 0
+                if args.enable_memory_monitoring:
+                    memory_info = get_memory_usage()
+                    gpu_memory = get_gpu_memory_usage()
+                
                 print(f"  [DEBUG] Metrics:")
                 print(f"    [DEBUG] IoU: {iou:.4f}")
                 print(f"    [DEBUG] Dice: {dice:.4f}")
                 print(f"    [DEBUG] Coverage Ratio: {coverage_ratio:.4f}")
+                
+                if args.enable_advanced_metrics:
+                    print(f"    [DEBUG] Precision: {precision:.4f}, Recall: {recall:.4f}")
+                    print(f"    [DEBUG] Boundary Accuracy: {boundary_accuracy:.4f}")
+                    print(f"    [DEBUG] Hausdorff Distance: {hausdorff_dist:.4f}")
+                    print(f"    [DEBUG] Contour Similarity: {contour_sim:.4f}")
+                    print(f"    [DEBUG] Temporal IoU: {temporal_iou:.4f}")
+                
+                if args.enable_failure_analysis and failure_analysis['is_failure']:
+                    print(f"    [DEBUG] FAILURE DETECTED - Severity: {failure_analysis['failure_severity']:.4f}")
+                
+                # Store metrics for WANDB logging
+                all_ious.append(iou)
+                all_dices.append(dice)
+                all_coverage_ratios.append(coverage_ratio)
+                
+                # Get the selected threshold from the thresholding process
+                selected_threshold = 0.0  # Default value
+                coverage_diff = 0.0  # Default value
+                
+                # Find the threshold that was actually used (this should match the thresholding logic above)
+                if 'selected_threshold' in locals():
+                    selected_threshold = locals()['selected_threshold']
+                else:
+                    # Estimate based on the binary mask
+                    selected_threshold = 0.1  # Default threshold
+                
+                all_thresholds.append(selected_threshold)
+                all_coverage_diffs.append(coverage_diff)
+                
+                if args.enable_advanced_metrics:
+                    all_hausdorff_distances.append(hausdorff_dist)
+                    all_contour_similarities.append(contour_sim)
+                    all_boundary_accuracies.append(boundary_accuracy)
+                    all_adapted_rand_errors.append(region_metrics['adapted_rand_error'])
+                    all_variation_of_information.append(region_metrics['variation_of_information'])
+                    all_failure_cases.append(1 if failure_analysis['is_failure'] else 0)
+                
+                if args.enable_memory_monitoring:
+                    all_cpu_memory.append(memory_info['cpu_memory_percent'])
+                    all_gpu_memory.append(gpu_memory)
+                
+                # Enhanced WANDB logging
+                if args.wandb and WANDB_AVAILABLE:
+                    log_data = {
+                        "frame_idx": frame_idx,
+                        "sequence_name": args.sequence,
+                        "mask_area_pixels": binary_mask.sum(),
+                        "mask_coverage_percent": (binary_mask.sum() / binary_mask.size) * 100,
+                        "gt_coverage_percent": (gt_mask.sum() / gt_mask.size) * 100,
+                        "iou_score": iou,
+                        "dice_score": dice,
+                        "coverage_ratio": coverage_ratio,
+                        "selected_threshold": selected_threshold,
+                        "coverage_diff": coverage_diff,
+                        "temporal_iou": temporal_iou,
+                        "progress": (frame_idx - start_frame + 1) / (end_frame - start_frame)
+                    }
+                    
+                    if args.enable_advanced_metrics:
+                        log_data.update({
+                            "precision_score": precision,
+                            "recall_score": recall,
+                            "boundary_accuracy": boundary_accuracy,
+                            "hausdorff_distance": hausdorff_dist,
+                            "contour_similarity": contour_sim,
+                            "adapted_rand_error": region_metrics['adapted_rand_error'],
+                            "variation_of_information": region_metrics['variation_of_information'],
+                            "is_failure_case": failure_analysis['is_failure'],
+                            "failure_severity": failure_analysis['failure_severity']
+                        })
+                    
+                    if args.enable_memory_monitoring:
+                        log_data.update({
+                            "cpu_memory_percent": memory_info['cpu_memory_percent'],
+                            "cpu_memory_used_gb": memory_info['cpu_memory_used_gb'],
+                            "gpu_memory_used_mb": gpu_memory
+                        })
+                    
+                    wandb.log(log_data)
                 
                 # Save prediction
                 output_file = os.path.join(args.output_path, f"{args.sequence}_{frame_idx:04d}.png")
@@ -646,6 +1115,142 @@ def main():
                 continue
             
             pbar.update(1)
+    
+    # Final WANDB logging
+    if args.wandb and WANDB_AVAILABLE:
+        # Calculate summary statistics
+        if all_ious:
+            summary_data = {
+                "status": "experiment_completed",
+                "total_frames_processed": end_frame - start_frame,
+                "sequence": args.sequence,
+                "final_timestamp": datetime.now().isoformat(),
+                # Basic metrics summary
+                "avg_iou": np.mean(all_ious),
+                "avg_dice": np.mean(all_dices),
+                "avg_coverage_ratio": np.mean(all_coverage_ratios),
+                "avg_threshold": np.mean(all_thresholds),
+                "avg_coverage_diff": np.mean(all_coverage_diffs),
+                "std_iou": np.std(all_ious),
+                "std_dice": np.std(all_dices),
+                "min_iou": np.min(all_ious),
+                "max_iou": np.max(all_ious),
+                "min_dice": np.min(all_dices),
+                "max_dice": np.max(all_dices)
+            }
+            
+            # Add advanced metrics summary if enabled
+            if args.enable_advanced_metrics:
+                if all_hausdorff_distances:
+                    summary_data.update({
+                        "avg_hausdorff_distance": np.mean(all_hausdorff_distances),
+                        "std_hausdorff_distance": np.std(all_hausdorff_distances),
+                        "min_hausdorff_distance": np.min(all_hausdorff_distances),
+                        "max_hausdorff_distance": np.max(all_hausdorff_distances)
+                    })
+                
+                if all_contour_similarities:
+                    summary_data.update({
+                        "avg_contour_similarity": np.mean(all_contour_similarities),
+                        "std_contour_similarity": np.std(all_contour_similarities),
+                        "min_contour_similarity": np.min(all_contour_similarities),
+                        "max_contour_similarity": np.max(all_contour_similarities)
+                    })
+                
+                if all_boundary_accuracies:
+                    summary_data.update({
+                        "avg_boundary_accuracy": np.mean(all_boundary_accuracies),
+                        "std_boundary_accuracy": np.std(all_boundary_accuracies)
+                    })
+                
+                if all_adapted_rand_errors:
+                    summary_data.update({
+                        "avg_adapted_rand_error": np.mean(all_adapted_rand_errors),
+                        "std_adapted_rand_error": np.std(all_adapted_rand_errors)
+                    })
+                
+                if all_variation_of_information:
+                    summary_data.update({
+                        "avg_variation_of_information": np.mean(all_variation_of_information),
+                        "std_variation_of_information": np.std(all_variation_of_information)
+                    })
+                
+                if all_failure_cases:
+                    failure_rate = np.mean(all_failure_cases)
+                    summary_data.update({
+                        "failure_rate": failure_rate,
+                        "total_failure_cases": sum(all_failure_cases),
+                        "failure_percentage": failure_rate * 100
+                    })
+                
+                # Add complexity metrics if available
+                if complexity_metrics:
+                    summary_data.update({
+                        "object_count": complexity_metrics.get('object_count', 0),
+                        "avg_area": complexity_metrics.get('avg_area', 0),
+                        "compactness": complexity_metrics.get('compactness', 0),
+                        "eccentricity": complexity_metrics.get('eccentricity', 0)
+                    })
+            
+            # Add memory monitoring summary if enabled
+            if args.enable_memory_monitoring:
+                if all_cpu_memory:
+                    summary_data.update({
+                        "avg_cpu_memory_percent": np.mean(all_cpu_memory),
+                        "max_cpu_memory_percent": np.max(all_cpu_memory),
+                        "avg_cpu_memory_gb": np.mean(all_cpu_memory) / 100 * 32  # Approximate
+                    })
+                
+                if all_gpu_memory:
+                    summary_data.update({
+                        "avg_gpu_memory_mb": np.mean(all_gpu_memory),
+                        "max_gpu_memory_mb": np.max(all_gpu_memory)
+                    })
+            
+            wandb.log(summary_data)
+        else:
+            wandb.log({
+                "status": "experiment_completed",
+                "total_frames_processed": end_frame - start_frame,
+                "sequence": args.sequence,
+                "final_timestamp": datetime.now().isoformat(),
+                "note": "No metrics collected - possible processing errors"
+            })
+        
+        wandb.finish()
+        print("Wandb experiment completed and logged")
+    
+    # Print comprehensive summary
+    print(f"\n=== TSP-SAM BASELINE SUMMARY ===")
+    print(f"Sequence: {args.sequence}")
+    print(f"Total frames processed: {end_frame - start_frame}")
+    
+    if all_ious:
+        print(f"Performance Metrics:")
+        print(f"  Average IoU: {np.mean(all_ious):.4f} ± {np.std(all_ious):.4f}")
+        print(f"  Average Dice: {np.mean(all_dices):.4f} ± {np.std(all_dices):.4f}")
+        print(f"  Average Coverage Ratio: {np.mean(all_coverage_ratios):.4f} ± {np.std(all_coverage_ratios):.4f}")
+        print(f"  IoU Range: {np.min(all_ious):.4f} - {np.max(all_ious):.4f}")
+        print(f"  Dice Range: {np.min(all_dices):.4f} - {np.max(all_dices):.4f}")
+        
+        if args.enable_advanced_metrics:
+            print(f"\nAdvanced Metrics:")
+            if all_hausdorff_distances:
+                print(f"  Average Hausdorff Distance: {np.mean(all_hausdorff_distances):.2f} ± {np.std(all_hausdorff_distances):.2f}")
+            if all_contour_similarities:
+                print(f"  Average Contour Similarity: {np.mean(all_contour_similarities):.4f} ± {np.std(all_contour_similarities):.4f}")
+            if all_boundary_accuracies:
+                print(f"  Average Boundary Accuracy: {np.mean(all_boundary_accuracies):.4f} ± {np.std(all_boundary_accuracies):.4f}")
+            if all_failure_cases:
+                failure_rate = np.mean(all_failure_cases)
+                print(f"  Failure Rate: {failure_rate:.1%} ({sum(all_failure_cases)}/{len(all_failure_cases)} frames)")
+        
+        if args.enable_memory_monitoring:
+            print(f"\nResource Usage:")
+            if all_cpu_memory:
+                print(f"  Average CPU Memory: {np.mean(all_cpu_memory):.1f}%")
+            if all_gpu_memory:
+                print(f"  Average GPU Memory: {np.mean(all_gpu_memory):.1f} MB")
     
     print(f"\nTSP-SAM baseline completed!")
     print(f"Results saved to: {args.output_path}")

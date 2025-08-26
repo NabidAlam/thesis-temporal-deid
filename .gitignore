@@ -9,6 +9,8 @@ input/
 output/
 results/
 videos/
+davis2016/
+davis2017-evaluation/
 *.mp4
 *.avi
 *.mov
@@ -28,6 +30,7 @@ model_checkpoint/
 # ===========================================
 # EVALUATION RESULTS & REPORTS
 # ===========================================
+evaluation/
 evaluation/results/
 evaluation/reports/
 evaluation/visualizations/
@@ -141,6 +144,18 @@ htmlcov/
 # Note: .gitmodules should be tracked, but submodule content is managed separately
 
 # ===========================================
+# EXTERNAL REPOSITORIES & SUBMODULES
+# ===========================================
+# TSP-SAM Official Repository
+tsp_sam_official/
+
+# SAMURAI Official Repository  
+samurai_official/
+
+# MaskAnyone Repository
+maskanyone/
+
+# ===========================================
 # PROJECT-SPECIFIC EXCLUSIONS
 # ===========================================
 # Large model files
@@ -211,6 +226,7 @@ test_*.py
 comprehensive_evaluation.py
 
 # Generated documentation and reports
+docs/
 docs/hybrid_architecture_design.md
 docs/pipeline_analysis.md
 

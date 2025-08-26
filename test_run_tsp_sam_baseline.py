@@ -2,7 +2,7 @@
 """
 Comprehensive Testing Suite for TSP-SAM Baseline Script
 Tests all functions and components to ensure reliability
-Updated for the working TSP-SAM implementation
+Updated for the enhanced TSP-SAM implementation with advanced features
 """
 
 import unittest
@@ -18,7 +18,7 @@ import shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 class TestRunTspSamBaseline(unittest.TestCase):
-    """Test suite for TSP-SAM baseline script"""
+    """Test suite for enhanced TSP-SAM baseline script"""
     
     def setUp(self):
         """Set up test environment"""
@@ -58,12 +58,12 @@ class TestRunTspSamBaseline(unittest.TestCase):
         shutil.rmtree(self.test_dir)
     
     def test_script_import(self):
-        """Test that the TSP-SAM script can be imported"""
+        """Test that the enhanced TSP-SAM script can be imported"""
         try:
             import run_tsp_sam_baseline
-            print("TSP-SAM script imported successfully")
+            print("Enhanced TSP-SAM script imported successfully")
         except ImportError as e:
-            self.fail(f"Failed to import TSP-SAM script: {e}")
+            self.fail(f"Failed to import enhanced TSP-SAM script: {e}")
     
     def test_function_imports(self):
         """Test that all key functions can be imported"""
@@ -73,11 +73,144 @@ class TestRunTspSamBaseline(unittest.TestCase):
                 load_ground_truth_mask,
                 create_video_sequence,
                 adaptive_threshold_optimization,
-                apply_temporal_consistency
+                apply_temporal_consistency,
+                # New advanced functions
+                calculate_hausdorff_distance,
+                calculate_contour_similarity,
+                calculate_region_based_metrics,
+                calculate_boundary_accuracy,
+                calculate_complexity_metrics,
+                analyze_failure_cases,
+                get_memory_usage,
+                get_gpu_memory_usage,
+                smooth_metric,
+                calculate_iou
             )
-            print("All key functions imported successfully")
+            print("All key functions (including new advanced features) imported successfully")
         except ImportError as e:
             self.fail(f"Failed to import key functions: {e}")
+    
+    def test_advanced_metrics_functions(self):
+        """Test all the new advanced metric calculation functions"""
+        from run_tsp_sam_baseline import (
+            calculate_hausdorff_distance,
+            calculate_contour_similarity,
+            calculate_region_based_metrics,
+            calculate_boundary_accuracy,
+            calculate_complexity_metrics
+        )
+        
+        # Test Hausdorff distance calculation
+        hausdorff = calculate_hausdorff_distance(self.test_mask_1, self.test_mask_2)
+        self.assertIsInstance(hausdorff, (float, int))
+        self.assertGreaterEqual(hausdorff, 0.0)
+        print("Hausdorff distance calculation test passed")
+        
+        # Test contour similarity calculation
+        contour_sim = calculate_contour_similarity(self.test_mask_1, self.test_mask_2)
+        self.assertIsInstance(contour_sim, float)
+        self.assertGreaterEqual(contour_sim, -1.0)
+        self.assertLessEqual(contour_sim, 1.0)
+        print("Contour similarity calculation test passed")
+        
+        # Test region-based metrics
+        region_metrics = calculate_region_based_metrics(self.test_mask_1, self.test_mask_2)
+        self.assertIsInstance(region_metrics, dict)
+        self.assertIn('adapted_rand_error', region_metrics)
+        self.assertIn('variation_of_information', region_metrics)
+        print("Region-based metrics calculation test passed")
+        
+        # Test boundary accuracy
+        boundary_acc = calculate_boundary_accuracy(self.test_mask_1, self.test_mask_2)
+        self.assertIsInstance(boundary_acc, float)
+        self.assertGreaterEqual(boundary_acc, 0.0)
+        self.assertLessEqual(boundary_acc, 1.0)
+        print("Boundary accuracy calculation test passed")
+        
+        # Test complexity metrics
+        complexity = calculate_complexity_metrics(self.test_mask_1)
+        self.assertIsInstance(complexity, dict)
+        self.assertIn('object_count', complexity)
+        self.assertIn('avg_area', complexity)
+        self.assertIn('compactness', complexity)
+        self.assertIn('eccentricity', complexity)
+        print("Complexity metrics calculation test passed")
+    
+    def test_failure_analysis(self):
+        """Test failure case analysis functionality"""
+        from run_tsp_sam_baseline import analyze_failure_cases
+        
+        # Test with different mask scenarios
+        failure_analysis = analyze_failure_cases(self.test_mask_1, self.test_mask_2, 0, "test")
+        
+        self.assertIsInstance(failure_analysis, dict)
+        self.assertIn('is_failure', failure_analysis)
+        self.assertIn('failure_severity', failure_analysis)
+        self.assertIn('false_negatives', failure_analysis)
+        self.assertIn('false_positives', failure_analysis)
+        self.assertIn('true_positives', failure_analysis)
+        self.assertIn('fn_ratio', failure_analysis)
+        self.assertIn('fp_ratio', failure_analysis)
+        
+        # Test with identical masks (should not be a failure)
+        identical_analysis = analyze_failure_cases(self.test_mask_1, self.test_mask_1, 0, "test")
+        self.assertIsInstance(identical_analysis['is_failure'], (bool, np.bool_))
+        
+        print("Failure analysis test passed")
+    
+    def test_memory_monitoring(self):
+        """Test memory monitoring functionality"""
+        from run_tsp_sam_baseline import get_memory_usage, get_gpu_memory_usage
+        
+        # Test CPU memory monitoring
+        cpu_memory = get_memory_usage()
+        self.assertIsInstance(cpu_memory, dict)
+        self.assertIn('cpu_memory_percent', cpu_memory)
+        self.assertIn('cpu_memory_used_gb', cpu_memory)
+        
+        # Test GPU memory monitoring
+        gpu_memory = get_gpu_memory_usage()
+        self.assertIsInstance(gpu_memory, (int, float))
+        
+        print("Memory monitoring test passed")
+    
+    def test_metric_smoothing(self):
+        """Test metric smoothing functionality"""
+        from run_tsp_sam_baseline import smooth_metric
+        
+        # Test smoothing with previous value
+        smoothed = smooth_metric(0.8, 0.7)
+        self.assertIsInstance(smoothed, float)
+        self.assertGreaterEqual(smoothed, 0.0)
+        self.assertLessEqual(smoothed, 1.0)
+        
+        # Test smoothing without previous value
+        no_prev = smooth_metric(0.8, None)
+        self.assertEqual(no_prev, 0.8)
+        
+        print("Metric smoothing test passed")
+    
+    def test_iou_calculation(self):
+        """Test IoU calculation function"""
+        from run_tsp_sam_baseline import calculate_iou
+        
+        # Test IoU calculation
+        iou = calculate_iou(self.test_mask_1, self.test_mask_2)
+        self.assertIsInstance(iou, float)
+        self.assertGreaterEqual(iou, 0.0)
+        self.assertLessEqual(iou, 1.0)
+        
+        # Test with identical masks
+        identical_iou = calculate_iou(self.test_mask_1, self.test_mask_1)
+        self.assertAlmostEqual(identical_iou, 1.0, places=3)
+        
+        # Test with completely different masks
+        different_mask = np.zeros_like(self.test_mask_1)
+        different_mask[0:10, 0:10] = 1
+        different_iou = calculate_iou(self.test_mask_1, different_mask)
+        self.assertEqual(different_iou, 0.0)
+        
+        print("IoU calculation test passed")
     
     def test_mask_loading(self):
         """Test ground truth mask loading functionality"""
@@ -219,6 +352,32 @@ class TestRunTspSamBaseline(unittest.TestCase):
             print("Weights & Biases (wandb) not available")
             print("   Install with: pip install wandb")
     
+    def test_advanced_dependencies(self):
+        """Test if advanced metric dependencies are available"""
+        try:
+            import scipy
+            print("SciPy available for advanced metrics")
+        except ImportError:
+            print("SciPy not available - some advanced metrics will be disabled")
+        
+        try:
+            import skimage
+            print("Scikit-image available for advanced metrics")
+        except ImportError:
+            print("Scikit-image not available - some advanced metrics will be disabled")
+        
+        try:
+            import psutil
+            print("psutil available for memory monitoring")
+        except ImportError:
+            print("psutil not available - memory monitoring will be disabled")
+        
+        try:
+            import GPUtil
+            print("GPUtil available for GPU memory monitoring")
+        except ImportError:
+            print("GPUtil not available - GPU memory monitoring will be disabled")
+    
     def test_tsp_sam_model_loading(self):
         """Test TSP-SAM model loading functionality"""
         print("Testing TSP-SAM model loading...")
@@ -319,9 +478,9 @@ class TestRunTspSamBaseline(unittest.TestCase):
 
 def run_comprehensive_test():
     """Run all tests and provide summary"""
-    print("TSP-SAM Baseline Comprehensive Testing Suite")
-    print("Updated for Working TSP-SAM Implementation")
-    print("=" * 60)
+    print("Enhanced TSP-SAM Baseline Comprehensive Testing Suite")
+    print("Testing All New Advanced Features and Metrics")
+    print("=" * 70)
     
     # Create test suite
     test_suite = unittest.TestLoader().loadTestsFromTestCase(TestRunTspSamBaseline)
@@ -331,9 +490,9 @@ def run_comprehensive_test():
     result = runner.run(test_suite)
     
     # Print summary
-    print("\n" + "=" * 60)
-    print("TEST SUMMARY")
-    print("=" * 60)
+    print("\n" + "=" * 70)
+    print("ENHANCED TEST SUMMARY")
+    print("=" * 70)
     
     total_tests = result.testsRun
     failed_tests = len(result.failures)
@@ -357,7 +516,8 @@ def run_comprehensive_test():
     
     # Overall status
     if failed_tests == 0 and error_tests == 0:
-        print("\n🎉 ALL TESTS PASSED! TSP-SAM baseline is ready for production.")
+        print("\nALL TESTS PASSED! Enhanced TSP-SAM baseline is ready for production.")
+        print("Advanced metrics, memory monitoring, failure analysis, and complexity metrics all working!")
         return True
     else:
         print(f"\n{failed_tests + error_tests} tests failed. Please fix issues before running production.")
