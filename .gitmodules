@@ -10,3 +10,6 @@
 [submodule "tsp_sam_official"]
 	path = tsp_sam_official
 	url = https://github.com/WenjunHui1/TSP-SAM.git
+[submodule "longsam2_for_bio"]
+	path = longsam2_for_bio
+	url = https://github.com/WimPouw/LongSAM2ForBio.git
