@@ -188,6 +188,11 @@ docs/build/
 wandb/
 *.wandb
 
+# Simulation and logging files
+SIMULATION_RESULTS_LOG.txt
+logs/
+video_processing_simulation.py
+
 # Temporal pipeline outputs and temporary files
 temporal/output/
 temporal/results/
