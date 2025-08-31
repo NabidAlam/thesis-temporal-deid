@@ -1,0 +1,69 @@
+dataset:
+  name: "team_ten"
+  type: "team_activity"
+  description: "Team activity videos with multiple people and dynamic interactions - optimized for group scenarios"
+  
+  # Core pipeline parameters
+  processing:
+    max_frames: null  # null = process all frames
+    temporal_window_size: 7  # TSP-SAM temporal window
+    confidence_threshold: 0.7  # Higher threshold for team activities
+    mask_quality_threshold: 0.7  # Higher quality for team interactions
+    
+  # Model-specific configurations
+  tsp_sam:
+    input_sizes: [352, 320, 256]  # Paper-validated square dimensions
+    temporal_processing: true
+    fallback_to_single_frame: true
+    checkpoint_path: "tsp_sam_official/model_checkpoint/pvt_v2_b5.pth"
+    fallback_checkpoint: "tsp_sam_official/model_checkpoint/best_checkpoint.pth"
+    adaptive_threshold: true  # Enable dynamic threshold adjustment
+    
+  samurai:
+    person_detection: true
+    confidence_threshold: 0.6  # Higher threshold for team activities
+    max_persons: 100  # Team activities can have many people
+    checkpoint_path: "samurai_official/sam2/checkpoints/sam2.1_hiera_large.pt"
+    enable_caching: true  # Enable frame caching
+    
+  maskanyone:
+    deidentification_strength: "medium"  # Balanced de-identification
+    preserve_identity: false
+    checkpoint_path: "maskanyone/worker/masking/mask_renderer.py"
+    
+  # Team-specific optimizations
+  team_optimizations:
+    group_detection: true
+    interaction_awareness: true
+    motion_tracking: true
+    background_complexity: "high"
+    multiple_speakers: true
+    dynamic_interactions: true
+    
+  # Output settings
+  output:
+    save_original_frames: true
+    save_deidentified_frames: true
+    save_masks: false
+    save_performance_report: true
+    frame_format: "jpg"
+    quality: 95
+    
+  # Performance settings
+  performance:
+    enable_cuda: true
+    batch_size: 1
+    memory_efficient: true
+    debug_mode: false
+    
+  # Cache settings
+  cache:
+    enable_frame_cache: true
+    max_cache_size: 2000  # Larger cache for complex team videos
+    cache_ttl: 7200  # 2 hours
+    
+  # Fallback strategies
+  fallback:
+    tsp_sam_fallback: "single_frame"
+    samurai_fallback: "group_detection"
+    maskanyone_fallback: "balanced_deidentification"
