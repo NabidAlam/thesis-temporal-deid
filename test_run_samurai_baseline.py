@@ -112,7 +112,7 @@ class TestRunSamuraiBaseline(unittest.TestCase):
     
     def test_calculate_iou(self):
         """Test IoU calculation"""
-        print("🧪 Testing calculate_iou...")
+        print("Testing calculate_iou...")
         
         # Test overlapping masks
         iou = calculate_iou(self.test_mask_1, self.test_mask_2)
