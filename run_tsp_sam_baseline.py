@@ -494,6 +494,18 @@ def apply_temporal_consistency(pred_mask, prev_mask=None, consistency_weight=0.3
     return consistent_mask
 
 def main():
+    print(f"[DEBUG] Starting TSP-SAM baseline main function")
+    
+    # Print system information
+    print(f"[DEBUG] Python version: {sys.version}")
+    print(f"[DEBUG] PyTorch version: {torch.__version__}")
+    print(f"[DEBUG] CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"[DEBUG] CUDA version: {torch.version.cuda}")
+        print(f"[DEBUG] GPU count: {torch.cuda.device_count()}")
+        print(f"[DEBUG] Current GPU: {torch.cuda.current_device()}")
+        print(f"[DEBUG] GPU name: {torch.cuda.get_device_name(0)}")
+    
     parser = argparse.ArgumentParser(description='TSP-SAM Baseline for Video De-identification')
     parser.add_argument('--input_path', type=str, required=True, help='Path to input dataset')
     parser.add_argument('--output_path', type=str, required=True, help='Path to save output masks')
@@ -518,7 +530,18 @@ def main():
     print(f"[DEBUG]   sequence: {args.sequence}")
     print(f"[DEBUG]   max_frames: {args.max_frames}")
     print(f"[DEBUG]   device: {args.device}")
+    print(f"[DEBUG]   wandb: {args.wandb}")
+    print(f"[DEBUG]   experiment_name: {args.experiment_name}")
+    print(f"[DEBUG]   checkpoint: {args.checkpoint}")
+    print(f"[DEBUG]   enable_advanced_metrics: {args.enable_advanced_metrics}")
+    print(f"[DEBUG]   enable_memory_monitoring: {args.enable_memory_monitoring}")
+    print(f"[DEBUG]   enable_failure_analysis: {args.enable_failure_analysis}")
+    print(f"[DEBUG]   metric_smoothing: {args.metric_smoothing}")
+    print(f"[DEBUG]   boundary_tolerance: {args.boundary_tolerance}")
     print(f"[DEBUG] ==================================================")
+    
+    # Record start time for performance tracking
+    start_time = time.time()
     
     # Create output directory
     print(f"[DEBUG] Creating output directory: {args.output_path}")
@@ -526,28 +549,84 @@ def main():
     print(f"[DEBUG] Output directory created/verified: {os.path.exists(args.output_path)}")
     
     device = torch.device(args.device)
-    print(f"Using device: {device}")
+    print(f"[DEBUG] Using device: {device}")
     
     # Initialize Weights & Biases if requested
     if args.wandb and WANDB_AVAILABLE:
+        print(f"[DEBUG] Initializing W&B...")
+        
+        # Create comprehensive experiment name
+        experiment_name = args.experiment_name if args.experiment_name else f"tsp_sam_baseline_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        print(f"[DEBUG] Experiment name: {experiment_name}")
+        
+        # Initialize W&B with comprehensive configuration
         wandb.init(
             project="temporal-deid-baselines",
-            name=args.experiment_name if args.experiment_name else f"tsp_sam_baseline_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            name=experiment_name,
+            tags=[
+                "m_tsp_sam",           # Model identifier
+                "d_davis2017",         # Dataset identifier
+                "b_baseline",          # Baseline identifier
+                "v_temporal",          # Version identifier
+                f"s_{args.sequence}",  # Sequence identifier
+                "h_cuda" if device.type == 'cuda' else "h_cpu"  # Hardware identifier
+            ],
             config={
+                # Model configuration
                 "model": "TSP-SAM",
+                "model_version": "temporal",
+                "checkpoint": args.checkpoint,
+                "input_size": 352,
+                "temporal_frames": 3,
+                
+                # Dataset configuration
                 "dataset": "DAVIS-2017",
                 "sequence": args.sequence,
                 "max_frames": args.max_frames,
+                "frame_start": 2,
+                
+                # Hardware configuration
                 "device": str(device),
-                "checkpoint": args.checkpoint
+                "cuda_available": torch.cuda.is_available(),
+                "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+                
+                # Processing configuration
+                "enable_advanced_metrics": args.enable_advanced_metrics,
+                "enable_memory_monitoring": args.enable_memory_monitoring,
+                "enable_failure_analysis": args.enable_failure_analysis,
+                "metric_smoothing": args.metric_smoothing,
+                "boundary_tolerance": args.boundary_tolerance,
+                
+                # Experiment metadata
+                "timestamp": datetime.now().isoformat(),
+                "python_version": sys.version,
+                "pytorch_version": torch.__version__,
+                "cuda_version": torch.version.cuda if torch.cuda.is_available() else "N/A"
             }
         )
-        print(f"Wandb experiment started: {wandb.run.name}")
+        
+        print(f"[DEBUG] W&B initialized successfully")
+        print(f"[DEBUG] Project: {wandb.run.project}")
+        print(f"[DEBUG] Run ID: {wandb.run.id}")
+        print(f"[DEBUG] Tags: {wandb.run.tags}")
+        
+        # Safely check config length
+        try:
+            config_dict = dict(wandb.run.config)
+            print(f"[DEBUG] Config logged: {len(config_dict)} parameters")
+        except Exception as e:
+            print(f"[DEBUG] Could not get config length: {e}")
+            print(f"[DEBUG] Config type: {type(wandb.run.config)}")
+        
+        print(f"[DEBUG] W&B experiment started: {wandb.run.name}")
     elif args.wandb and not WANDB_AVAILABLE:
         print("Warning: --wandb specified but wandb not available")
     
     # Load TSP-SAM model
-    print("Loading TSP-SAM model...")
+    print(f"[DEBUG] Loading TSP-SAM model...")
+    print(f"[DEBUG] Checkpoint path: {args.checkpoint}")
+    print(f"[DEBUG] Device: {device}")
+    
     try:
         # Create model_args object like official implementation
         class ModelArgs:
@@ -558,41 +637,44 @@ def main():
                 self.gpu_ids = [0] if device == 'cuda' else [0]
         
         model_args = ModelArgs()
+        print(f"[DEBUG] Model arguments created - trainsize: {model_args.trainsize}, testsize: {model_args.testsize}, grid: {model_args.grid}")
+        
         model = VideoModel(model_args)
+        print(f"[DEBUG] VideoModel instance created successfully")
         
         # Load TSP-SAM checkpoint
         checkpoint_path = args.checkpoint
         if os.path.exists(checkpoint_path):
             try:
-                print(f"Loading checkpoint from {checkpoint_path}...")
+                print(f"[DEBUG] Loading checkpoint from {checkpoint_path}...")
                 checkpoint = torch.load(checkpoint_path, map_location=device)
-                print(f"Checkpoint loaded, keys: {list(checkpoint.keys())[:5]}...")
+                print(f"[DEBUG] Checkpoint loaded, keys: {list(checkpoint.keys())[:5]}...")
                 
                 # Fix checkpoint keys by removing 'module.' prefix if present
                 if list(checkpoint.keys())[0].startswith('module.'):
-                    print(f"  [DEBUG] Removing 'module.' prefix from checkpoint keys")
+                    print(f"[DEBUG] Removing 'module.' prefix from checkpoint keys")
                     new_checkpoint = {}
                     for key, value in checkpoint.items():
                         new_key = key.replace('module.', '')
                         new_checkpoint[new_key] = value
                     checkpoint = new_checkpoint
-                    print(f"  [DEBUG] Fixed checkpoint keys: {list(checkpoint.keys())[:5]}...")
+                    print(f"[DEBUG] Fixed checkpoint keys: {list(checkpoint.keys())[:5]}...")
                 
                 model.load_state_dict(checkpoint, strict=True)  # Use strict=True like original
-                print(f"TSP-SAM checkpoint loaded in {time.time():.1f} seconds")
+                print(f"[DEBUG] TSP-SAM checkpoint loaded successfully in {time.time():.1f} seconds")
             except Exception as e:
-                print(f"Warning: Failed to load checkpoint: {e}")
-                print("Model will run with random weights")
+                print(f"[WARNING] Failed to load checkpoint: {e}")
+                print("[DEBUG] Model will run with random weights")
         else:
-            print(f"Warning: TSP-SAM checkpoint not found at {checkpoint_path}")
-            print("Model will run with random weights")
+            print(f"[WARNING] TSP-SAM checkpoint not found at {checkpoint_path}")
+            print("[DEBUG] Model will run with random weights")
         
         model = model.to(device)
         model.eval()
-        print("ORIGINAL TSP-SAM VideoModel loaded successfully")
+        print(f"[DEBUG] ORIGINAL TSP-SAM VideoModel loaded successfully on {device}")
         
     except Exception as e:
-        print(f"Error loading TSP-SAM model: {e}")
+        print(f"[ERROR] Error loading TSP-SAM model: {e}")
         import traceback
         traceback.print_exc()
         return
@@ -647,12 +729,14 @@ def main():
     # Process frames with proper temporal context (like official implementation)
     max_frames = min(args.max_frames, len(img_files))
     print(f"[DEBUG] Processing {max_frames} frames...")
+    print(f"[DEBUG] Total available frames: {len(img_files)}")
     
     # Start from frame 2 (like official implementation)
     start_frame = 2
     end_frame = min(start_frame + max_frames, len(img_files))
     print(f"[DEBUG] Frame range: {start_frame} to {end_frame}")
     print(f"[DEBUG] Total frames to process: {end_frame - start_frame}")
+    print(f"[DEBUG] Temporal context: 3 frames (frame_idx-2, frame_idx-1, frame_idx)")
     
     # Initialize metrics tracking
     all_ious = []
@@ -683,6 +767,14 @@ def main():
     
     # Complexity metrics for first frame
     complexity_metrics = {}
+    
+    print(f"[DEBUG] Starting TSP-SAM processing loop...")
+    print(f"[DEBUG] Processing sequence: {args.sequence}")
+    print(f"[DEBUG] Output directory: {args.output_path}")
+    print(f"[DEBUG] W&B enabled: {args.wandb}")
+    print(f"[DEBUG] Advanced metrics: {args.enable_advanced_metrics}")
+    print(f"[DEBUG] Memory monitoring: {args.enable_memory_monitoring}")
+    print(f"[DEBUG] Failure analysis: {args.enable_failure_analysis}")
     
     with tqdm(total=end_frame-start_frame, desc=f"Processing {args.sequence}") as pbar:
         for frame_idx in range(start_frame, end_frame):
@@ -777,6 +869,7 @@ def main():
                 print(f"    [DEBUG] images: {[img.shape for img in images]}")
                 print(f"  [DEBUG] images_ycbcr: {[img.shape for img in images_ycbcr]}")
                 print(f"  [DEBUG] img_sam_tensor: {img_sam_tensor.shape}")
+                print(f"  [DEBUG] Model device: {next(model.parameters()).device}")
                 
                 try:
                     with torch.no_grad():
@@ -784,7 +877,9 @@ def main():
                         # 1. x: temporal sequence of RGB images (list of tensors)
                         # 2. x_ycbcr: temporal sequence of YCbCr images (list of tensors)
                         # 3. x_sam: SAM input (single frame tensor)
+                        print(f"  [DEBUG] Executing TSP-SAM inference...")
                         pred = model(images, images_ycbcr, img_sam_tensor)
+                        print(f"  [DEBUG] Model inference completed successfully")
                     print(f"  [DEBUG] Model call successful")
                 except Exception as e:
                     print(f"  [ERROR] Model call failed: {e}")
@@ -938,15 +1033,21 @@ def main():
                 print(f"  [DEBUG] Post-processing disabled - using original binary mask")
                 
                 # Calculate metrics
-                intersection = np.logical_and(binary_mask, gt_mask).sum()
-                union = np.logical_or(binary_mask, gt_mask).sum()
+                print(f"  [DEBUG] Calculating metrics for frame {frame_idx}...")
+                
+                intersection = np.logical_and(gt_mask, binary_mask).sum()
+                union = np.logical_or(gt_mask, binary_mask).sum()
                 iou = intersection / (union + 1e-8)
                 
                 dice_numerator = 2 * intersection
-                dice_denominator = binary_mask.sum() + gt_mask.sum()
+                dice_denominator = gt_mask.sum() + binary_mask.sum()
                 dice = dice_numerator / (dice_denominator + 1e-8)
                 
                 coverage_ratio = binary_mask.sum() / (gt_mask.sum() + 1e-8)
+                
+                print(f"  [DEBUG] Raw metrics - IoU: {iou:.3f}, Dice: {dice:.3f}, Coverage: {coverage_ratio:.3f}")
+                print(f"  [DEBUG] Intersection: {intersection}, Union: {union}")
+                print(f"  [DEBUG] GT pixels: {gt_mask.sum()}, Pred pixels: {binary_mask.sum()}")
                 
                 # Apply metric smoothing if enabled
                 if args.metric_smoothing > 0:
@@ -1049,41 +1150,52 @@ def main():
                 # Enhanced WANDB logging
                 if args.wandb and WANDB_AVAILABLE:
                     log_data = {
-                        "frame_idx": frame_idx,
-                        "sequence_name": args.sequence,
-                        "mask_area_pixels": binary_mask.sum(),
-                        "mask_coverage_percent": (binary_mask.sum() / binary_mask.size) * 100,
-                        "gt_coverage_percent": (gt_mask.sum() / gt_mask.size) * 100,
-                        "iou_score": iou,
-                        "dice_score": dice,
-                        "coverage_ratio": coverage_ratio,
-                        "selected_threshold": selected_threshold,
-                        "coverage_diff": coverage_diff,
-                        "temporal_iou": temporal_iou,
-                        "progress": (frame_idx - start_frame + 1) / (end_frame - start_frame)
+                        # Frame-level metrics with proper prefixes
+                        "frame/idx": frame_idx,
+                        "frame/sequence_name": args.sequence,
+                        "frame/progress": (frame_idx - start_frame + 1) / (end_frame - start_frame),
+                        "frame/total_frames": end_frame - start_frame,
+                        
+                        # Mask metrics
+                        "mask/area_pixels": int(binary_mask.sum()),
+                        "mask/coverage_percent": float((binary_mask.sum() / binary_mask.size) * 100),
+                        "mask/gt_coverage_percent": float((gt_mask.sum() / gt_mask.size) * 100),
+                        
+                        # Evaluation metrics with proper prefixes
+                        "eval/iou": float(iou),
+                        "eval/dice": float(dice),
+                        "eval/coverage_ratio": float(coverage_ratio),
+                        "eval/temporal_iou": float(temporal_iou),
+                        "eval/selected_threshold": float(selected_threshold),
+                        "eval/coverage_diff": float(coverage_diff)
                     }
                     
                     if args.enable_advanced_metrics:
                         log_data.update({
-                            "precision_score": precision,
-                            "recall_score": recall,
-                            "boundary_accuracy": boundary_accuracy,
-                            "hausdorff_distance": hausdorff_dist,
-                            "contour_similarity": contour_sim,
-                            "adapted_rand_error": region_metrics['adapted_rand_error'],
-                            "variation_of_information": region_metrics['variation_of_information'],
-                            "is_failure_case": failure_analysis['is_failure'],
-                            "failure_severity": failure_analysis['failure_severity']
+                            "eval/precision": float(precision),
+                            "eval/recall": float(recall),
+                            "eval/boundary_accuracy": float(boundary_accuracy),
+                            "eval/hausdorff_distance": float(hausdorff_dist),
+                            "eval/contour_similarity": float(contour_sim),
+                            "eval/adapted_rand_error": float(region_metrics['adapted_rand_error']),
+                            "eval/variation_of_information": float(region_metrics['variation_of_information']),
+                            "eval/is_failure_case": int(failure_analysis['is_failure']),
+                            "eval/failure_severity": float(failure_analysis['failure_severity'])
                         })
                     
                     if args.enable_memory_monitoring:
                         log_data.update({
-                            "cpu_memory_percent": memory_info['cpu_memory_percent'],
-                            "cpu_memory_used_gb": memory_info['cpu_memory_used_gb'],
-                            "gpu_memory_used_mb": gpu_memory
+                            "system/cpu_memory_percent": float(memory_info['cpu_memory_percent']),
+                            "system/cpu_memory_used_gb": float(memory_info['cpu_memory_used_gb']),
+                            "system/gpu_memory_used_mb": float(gpu_memory)
                         })
                     
-                    wandb.log(log_data)
+                    # Log to W&B with error handling
+                    try:
+                        wandb.log(log_data)
+                        print(f"  [DEBUG] W&B logging completed successfully")
+                    except Exception as e:
+                        print(f"  [WARNING] W&B logging failed: {e}")
                 
                 # Save prediction
                 output_file = os.path.join(args.output_path, f"{args.sequence}_{frame_idx:04d}.png")
@@ -1118,115 +1230,118 @@ def main():
     
     # Final WANDB logging
     if args.wandb and WANDB_AVAILABLE:
+        print(f"[DEBUG] Logging final experiment summary to W&B...")
+        
         # Calculate summary statistics
         if all_ious:
             summary_data = {
-                "status": "experiment_completed",
-                "total_frames_processed": end_frame - start_frame,
-                "sequence": args.sequence,
-                "final_timestamp": datetime.now().isoformat(),
-                # Basic metrics summary
-                "avg_iou": np.mean(all_ious),
-                "avg_dice": np.mean(all_dices),
-                "avg_coverage_ratio": np.mean(all_coverage_ratios),
-                "avg_threshold": np.mean(all_thresholds),
-                "avg_coverage_diff": np.mean(all_coverage_diffs),
-                "std_iou": np.std(all_ious),
-                "std_dice": np.std(all_dices),
-                "min_iou": np.min(all_ious),
-                "max_iou": np.max(all_ious),
-                "min_dice": np.min(all_dices),
-                "max_dice": np.max(all_dices)
+                # Experiment status
+                "experiment/status_code": 1,
+                "experiment/total_frames_processed": int(end_frame - start_frame),
+                "experiment/total_sequences_processed": 1,
+                "experiment/final_timestamp": float(datetime.now().timestamp()),
+                
+                # Basic metrics summary with proper prefixes
+                "experiment/overall_avg_iou": float(np.mean(all_ious)),
+                "experiment/overall_avg_dice": float(np.mean(all_dices)),
+                "experiment/overall_avg_coverage": float(np.mean(all_coverage_ratios)),
+                "experiment/overall_avg_threshold": float(np.mean(all_thresholds)),
+                "experiment/overall_avg_coverage_diff": float(np.mean(all_coverage_diffs)),
+                
+                # Statistical measures
+                "experiment/dataset_iou_mean": float(np.mean(all_ious)),
+                "experiment/dataset_iou_std": float(np.std(all_ious)),
+                "experiment/dataset_iou_min": float(np.min(all_ious)),
+                "experiment/dataset_iou_max": float(np.max(all_ious)),
+                "experiment/dataset_iou_median": float(np.median(all_ious)),
+                "experiment/dataset_iou_q25": float(np.percentile(all_ious, 25)),
+                "experiment/dataset_iou_q75": float(np.percentile(all_ious, 75)),
+                
+                "experiment/dataset_dice_mean": float(np.mean(all_dices)),
+                "experiment/dataset_dice_std": float(np.std(all_dices)),
+                "experiment/dataset_dice_median": float(np.median(all_dices)),
+                
+                "experiment/dataset_coverage_mean": float(np.mean(all_coverage_ratios)),
+                "experiment/dataset_coverage_std": float(np.std(all_coverage_ratios)),
+                "experiment/dataset_coverage_median": float(np.median(all_coverage_ratios))
             }
             
             # Add advanced metrics summary if enabled
             if args.enable_advanced_metrics:
                 if all_hausdorff_distances:
                     summary_data.update({
-                        "avg_hausdorff_distance": np.mean(all_hausdorff_distances),
-                        "std_hausdorff_distance": np.std(all_hausdorff_distances),
-                        "min_hausdorff_distance": np.min(all_hausdorff_distances),
-                        "max_hausdorff_distance": np.max(all_hausdorff_distances)
-                    })
-                
-                if all_contour_similarities:
-                    summary_data.update({
-                        "avg_contour_similarity": np.mean(all_contour_similarities),
-                        "std_contour_similarity": np.std(all_contour_similarities),
-                        "min_contour_similarity": np.min(all_contour_similarities),
-                        "max_contour_similarity": np.max(all_contour_similarities)
-                    })
-                
-                if all_boundary_accuracies:
-                    summary_data.update({
-                        "avg_boundary_accuracy": np.mean(all_boundary_accuracies),
-                        "std_boundary_accuracy": np.std(all_boundary_accuracies)
-                    })
-                
-                if all_adapted_rand_errors:
-                    summary_data.update({
-                        "avg_adapted_rand_error": np.mean(all_adapted_rand_errors),
-                        "std_adapted_rand_error": np.std(all_adapted_rand_errors)
-                    })
-                
-                if all_variation_of_information:
-                    summary_data.update({
-                        "avg_variation_of_information": np.mean(all_variation_of_information),
-                        "std_variation_of_information": np.std(all_variation_of_information)
+                        "experiment/overall_avg_hausdorff": float(np.mean(all_hausdorff_distances)),
+                        "experiment/overall_avg_contour_similarity": float(np.mean(all_contour_similarities)),
+                        "experiment/overall_avg_boundary_accuracy": float(np.mean(all_boundary_accuracies)),
+                        "experiment/overall_avg_adapted_rand": float(np.mean(all_adapted_rand_errors)),
+                        "experiment/overall_avg_voi": float(np.mean(all_variation_of_information))
                     })
                 
                 if all_failure_cases:
                     failure_rate = np.mean(all_failure_cases)
                     summary_data.update({
-                        "failure_rate": failure_rate,
-                        "total_failure_cases": sum(all_failure_cases),
-                        "failure_percentage": failure_rate * 100
+                        "experiment/overall_failure_rate": float(failure_rate),
+                        "experiment/total_failure_cases": int(sum(all_failure_cases))
                     })
                 
                 # Add complexity metrics if available
                 if complexity_metrics:
                     summary_data.update({
-                        "object_count": complexity_metrics.get('object_count', 0),
-                        "avg_area": complexity_metrics.get('avg_area', 0),
-                        "compactness": complexity_metrics.get('compactness', 0),
-                        "eccentricity": complexity_metrics.get('eccentricity', 0)
+                        "complexity/object_count": int(complexity_metrics.get('object_count', 0)),
+                        "complexity/avg_area": float(complexity_metrics.get('avg_area', 0)),
+                        "complexity/compactness": float(complexity_metrics.get('compactness', 0)),
+                        "complexity/eccentricity": float(complexity_metrics.get('eccentricity', 0))
                     })
             
             # Add memory monitoring summary if enabled
             if args.enable_memory_monitoring:
                 if all_cpu_memory:
                     summary_data.update({
-                        "avg_cpu_memory_percent": np.mean(all_cpu_memory),
-                        "max_cpu_memory_percent": np.max(all_cpu_memory),
-                        "avg_cpu_memory_gb": np.mean(all_cpu_memory) / 100 * 32  # Approximate
+                        "system/avg_cpu_memory_percent": float(np.mean(all_cpu_memory)),
+                        "system/max_cpu_memory_percent": float(np.max(all_cpu_memory))
                     })
                 
                 if all_gpu_memory:
                     summary_data.update({
-                        "avg_gpu_memory_mb": np.mean(all_gpu_memory),
-                        "max_gpu_memory_mb": np.max(all_gpu_memory)
+                        "system/avg_gpu_memory_mb": float(np.mean(all_gpu_memory)),
+                        "system/max_gpu_memory_mb": float(np.max(all_gpu_memory))
                     })
             
-            wandb.log(summary_data)
+            # Log summary to W&B
+            try:
+                wandb.log(summary_data)
+                print(f"[DEBUG] Experiment summary logged to W&B successfully")
+            except Exception as e:
+                print(f"[WARNING] Failed to log experiment summary: {e}")
         else:
-            wandb.log({
-                "status": "experiment_completed",
-                "total_frames_processed": end_frame - start_frame,
-                "sequence": args.sequence,
-                "final_timestamp": datetime.now().isoformat(),
-                "note": "No metrics collected - possible processing errors"
-            })
+            # Log error case
+            try:
+                wandb.log({
+                    "experiment/status_code": 0,
+                    "experiment/total_frames_processed": int(end_frame - start_frame),
+                    "experiment/note": "No metrics collected - possible processing errors"
+                })
+                print(f"[DEBUG] Error summary logged to W&B")
+            except Exception as e:
+                print(f"[WARNING] Failed to log error summary: {e}")
         
-        wandb.finish()
-        print("Wandb experiment completed and logged")
+        # Finish W&B run
+        try:
+            wandb.finish()
+            print(f"[DEBUG] W&B experiment completed and logged")
+        except Exception as e:
+            print(f"[WARNING] Failed to finish W&B run: {e}")
     
     # Print comprehensive summary
-    print(f"\n=== TSP-SAM BASELINE SUMMARY ===")
+    print(f"\n[DEBUG] ==================================================")
+    print(f"[DEBUG] TSP-SAM BASELINE SUMMARY")
+    print(f"[DEBUG] ==================================================")
     print(f"Sequence: {args.sequence}")
     print(f"Total frames processed: {end_frame - start_frame}")
+    print(f"Processing time: {time.time() - start_time:.2f} seconds" if 'start_time' in locals() else "Processing time: N/A")
     
     if all_ious:
-        print(f"Performance Metrics:")
+        print(f"[DEBUG] Performance Metrics:")
         print(f"  Average IoU: {np.mean(all_ious):.4f} ± {np.std(all_ious):.4f}")
         print(f"  Average Dice: {np.mean(all_dices):.4f} ± {np.std(all_dices):.4f}")
         print(f"  Average Coverage Ratio: {np.mean(all_coverage_ratios):.4f} ± {np.std(all_coverage_ratios):.4f}")
@@ -1234,7 +1349,7 @@ def main():
         print(f"  Dice Range: {np.min(all_dices):.4f} - {np.max(all_dices):.4f}")
         
         if args.enable_advanced_metrics:
-            print(f"\nAdvanced Metrics:")
+            print(f"[DEBUG] Advanced Metrics:")
             if all_hausdorff_distances:
                 print(f"  Average Hausdorff Distance: {np.mean(all_hausdorff_distances):.2f} ± {np.std(all_hausdorff_distances):.2f}")
             if all_contour_similarities:
@@ -1246,14 +1361,16 @@ def main():
                 print(f"  Failure Rate: {failure_rate:.1%} ({sum(all_failure_cases)}/{len(all_failure_cases)} frames)")
         
         if args.enable_memory_monitoring:
-            print(f"\nResource Usage:")
+            print(f"[DEBUG] Resource Usage:")
             if all_cpu_memory:
                 print(f"  Average CPU Memory: {np.mean(all_cpu_memory):.1f}%")
             if all_gpu_memory:
                 print(f"  Average GPU Memory: {np.mean(all_gpu_memory):.1f} MB")
     
-    print(f"\nTSP-SAM baseline completed!")
-    print(f"Results saved to: {args.output_path}")
+    print(f"[DEBUG] ==================================================")
+    print(f"[DEBUG] TSP-SAM baseline completed successfully!")
+    print(f"[DEBUG] Results saved to: {args.output_path}")
+    print(f"[DEBUG] ==================================================")
 
 if __name__ == "__main__":
     main()
