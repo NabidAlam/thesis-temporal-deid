@@ -3,7 +3,7 @@
 # ===========================================
 
 # ===========================================
-# DATASETS & INPUT FILES (Large files, not in repo)
+# CORE DATASETS & INPUT FILES (Large files, not in repo)
 # ===========================================
 input/
 output/
@@ -15,9 +15,10 @@ davis2017-evaluation/
 *.avi
 *.mov
 *.mkv
+*.webm
 
 # ===========================================
-# MODEL CHECKPOINTS & WEIGHTS (Large files)
+# MODEL CHECKPOINTS & WEIGHTS (Large files - 1-3GB each)
 # ===========================================
 checkpoints/
 model_checkpoint/
@@ -26,21 +27,82 @@ model_checkpoint/
 *.ckpt
 *.h5
 *.onnx
+*.bin
+*.safetensors
 
 # ===========================================
-# EVALUATION RESULTS & REPORTS
+# EXTERNAL REPOSITORIES & SUBMODULES
 # ===========================================
-evaluation/
-evaluation/results/
-evaluation/reports/
-evaluation/visualizations/
-davis2017-evaluation/
-*.csv
-*.json
-baseline_comparison_*.csv
+# TSP-SAM Official Repository
+tsp_sam_official/
+
+# SAMURAI Official Repository  
+samurai_official/
+
+# MaskAnyone Repository
+maskanyone/
+
+# MaskBench Repository
+maskbench/
+
+# SAM2 Repository
+sam2_repo/
+
+# LongSAM2 Repository
+longsam2_for_bio/
 
 # ===========================================
-# PYTHON COMPILED FILES
+# ENVISIONBOX INTEGRATION SPECIFIC
+# ===========================================
+# Model checkpoints (Large files - 1-3GB each)
+envisionbox_integration/checkpoints/
+envisionbox_integration/official_envisionbox/checkpoints/
+envisionbox_integration/**/*.pt
+envisionbox_integration/**/*.pth
+envisionbox_integration/**/*.ckpt
+envisionbox_integration/**/*.bin
+envisionbox_integration/**/*.safetensors
+
+# Generated outputs from processing
+envisionbox_integration/output/
+envisionbox_integration/test_outputs/
+envisionbox_integration/temp/
+envisionbox_integration/tmp/
+
+# Log files from processing
+envisionbox_integration/logs/
+envisionbox_integration/**/*.log
+
+# Generated video outputs
+envisionbox_integration/**/*.mp4
+envisionbox_integration/**/*.avi
+envisionbox_integration/**/*.mov
+envisionbox_integration/**/*.mkv
+envisionbox_integration/**/*.webm
+
+# Generated image outputs
+envisionbox_integration/**/*.jpg
+envisionbox_integration/**/*.jpeg
+envisionbox_integration/**/*.png
+envisionbox_integration/**/*.gif
+envisionbox_integration/**/*.bmp
+envisionbox_integration/**/*.tiff
+
+# Generated data files
+envisionbox_integration/**/*.csv
+envisionbox_integration/**/*.json
+# But keep essential configs
+!envisionbox_integration/configs/main_config.json
+!envisionbox_integration/**/configs/*.json
+
+# Test and temporary files
+envisionbox_integration/test_*.py
+envisionbox_integration/*_test.py
+envisionbox_integration/temp_*.py
+envisionbox_integration/debug_*.py
+
+# ===========================================
+# PYTHON COMPILED FILES & CACHE
 # ===========================================
 __pycache__/
 *.py[cod]
@@ -48,24 +110,22 @@ __pycache__/
 *.so
 *.dll
 *.dylib
-
-# ===========================================
-# JUPYTER NOTEBOOKS
-# ===========================================
-.ipynb_checkpoints/
-*.ipynb
+*.pyc
+*.pyo
+*.pyd
 
 # ===========================================
 # ENVIRONMENT & DEPENDENCIES
 # ===========================================
 .env
 .env.*
-environment.yml
-requirements.txt
-venv/
 .venv/
+venv/
 env/
 ENV/
+# Keep environment.yml and requirements.txt for dependency tracking
+# environment.yml
+# requirements.txt
 
 # ===========================================
 # IDE & EDITOR FILES
@@ -97,6 +157,8 @@ desktop.ini
 *.err
 debug.log
 debug_*.log
+logs/
+SIMULATION_RESULTS_LOG.txt
 
 # ===========================================
 # TEMPORARY & BACKUP FILES
@@ -107,6 +169,9 @@ debug_*.log
 *.old
 *.orig
 *.rej
+temp/
+tmp/
+cache/
 
 # ===========================================
 # BUILD & DISTRIBUTION
@@ -139,136 +204,27 @@ htmlcov/
 *.xls
 
 # ===========================================
-# GIT SUBMODULES (Keep .gitmodules but ignore content)
-# ===========================================
-# Note: .gitmodules should be tracked, but submodule content is managed separately
-
-# ===========================================
-# EXTERNAL REPOSITORIES & SUBMODULES
-# ===========================================
-# TSP-SAM Official Repository
-tsp_sam_official/
-
-# SAMURAI Official Repository  
-samurai_official/
-
-# MaskAnyone Repository
-maskanyone/
-
-# ===========================================
-# PROJECT-SPECIFIC EXCLUSIONS
-# ===========================================
-# Large model files
-samurai/sam2/checkpoints/
-tsp_sam_official/checkpoints/
-tsp_sam_official/snapshot/
-tspsam/model_checkpoint/
-
-# Analysis and comparison files
-analyze_baseline_results.py
-baseline_comparison_*.csv
-
-# Generated evaluation files
-evaluation/results/baseline_results/*/
-evaluation/results/baseline_comparison_*.csv
-
-# Temporary outputs
-temporal/__pycache__/
-samurai/__pycache__/
-tspsam/__pycache__/
-
-# Documentation builds
-docs/_build/
-docs/build/
-
-# ===========================================
-# NEW ADDITIONS - TEMPORAL PIPELINE & EXPERIMENT TRACKING
+# EXPERIMENT TRACKING & ANALYSIS
 # ===========================================
 # Weights & Biases experiment tracking
 wandb/
 *.wandb
 
-# Simulation and logging files
-SIMULATION_RESULTS_LOG.txt
-logs/
-video_processing_simulation.py
+# Generated analysis and comparison files
+baseline_comparison_*.csv
+*_results.csv
+*_analysis.json
+detailed_baseline_report.csv
+baseline_summary_report.json
 
-# Temporal pipeline outputs and temporary files
-temporal/output/
-temporal/results/
-temporal/temp/
-temporal/cache/
-temporal/debug_masks/
-temporal/temporal_memory/
+# Generated evaluation files
+evaluation/results/
+evaluation/reports/
+evaluation/visualizations/
 
-# Generated temporal analysis files
-temporal/*_masking_summary.py
-temporal/pipeline_summary.py
-temporal/check_ted_video.py
-temporal/compare_deidentification_methods.py
-temporal/convert_images_to_video.py
-
-# Generic memory pipeline outputs
-temporal/generic_memory_pipeline_outputs/
-temporal/memory_cache/
-
-# SAM2 API server logs and temporary files
-temporal/sam2_api_server_logs/
-temporal/sam2_temp/
-
-# MaskAnyone wrapper outputs
-temporal/maskanyone_outputs/
-temporal/maskanyone_cache/
-
-# TSP-SAM complete outputs
-temporal/tsp_sam_outputs/
-temporal/tsp_sam_cache/
-
-# Test and evaluation outputs
-test_*.py
-*_evaluation.py
-*_baseline*.py
-comprehensive_evaluation.py
-
-# Generated documentation and reports
-docs/
-docs/hybrid_architecture_design.md
-docs/pipeline_analysis.md
-
-# Thesis documentation and guides
-THESIS_METRICS_GUIDE.md
-
-# Docker and container files
-docker-compose*.yml
-docker/
-docker_build/
-
-# Environment and configuration files
-app.env
-config.env
-*.env.local
-
-# Node.js and frontend build files
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-frontend/build/
-frontend/dist/
-
-# Database and cache files
-*.db
-*.sqlite
-*.sqlite3
-cache/
-temp/
-tmp/
-
-# Large video and image files
-*.mp4
-*.avi
-*.mov
-*.mkv
+# ===========================================
+# LARGE MEDIA FILES
+# ===========================================
 *.jpg
 *.jpeg
 *.png
@@ -277,16 +233,81 @@ tmp/
 *.tiff
 *.webp
 
-# Archive and compressed files
+# ===========================================
+# ARCHIVE & COMPRESSED FILES
+# ===========================================
 *.zip
 *.tar
 *.gz
 *.rar
 *.7z
 
-# Backup and version control files
-*.backup
-*.old
-*.orig
-*.rej
-*.bak
+# ===========================================
+# DATABASE & CACHE FILES
+# ===========================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ===========================================
+# DOCKER & CONTAINER FILES
+# ===========================================
+docker-compose*.yml
+docker/
+docker_build/
+
+# ===========================================
+# NODE.JS & FRONTEND BUILD FILES
+# ===========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/build/
+frontend/dist/
+
+# ===========================================
+# DOCUMENTATION (Entire docs folder ignored)
+# ===========================================
+docs/
+
+# ===========================================
+# WHAT TO KEEP (Essential files that SHOULD be tracked)
+# ===========================================
+# Core system files
+!run_*.py
+!comprehensive_baseline_comparison.py
+!integrated_temporal_pipeline_hybrid.py
+
+# Configuration files
+!configs/**/*.yaml
+!configs/**/*.yml
+!configs/**/*.json
+!envisionbox_integration/configs/main_config.json
+
+# Documentation
+!README.md
+!LICENSE
+
+# Requirements and environment
+!requirements.txt
+!environment.yml
+
+# Test files (organized in tests/ directory)
+!tests/**/*.py
+
+# Scripts (organized in scripts/ directory)
+!scripts/**/*.py
+
+# Core integration code
+!envisionbox_integration/integration/*.py
+!envisionbox_integration/setup/*.py
+!envisionbox_integration/test_scenarios/*.py
+
+# Essential EnvisionBox files
+!envisionbox_integration/official_envisionbox/Script/*.py
+!envisionbox_integration/official_envisionbox/configs/
+!envisionbox_integration/official_envisionbox/docs/
+!envisionbox_integration/official_envisionbox/ReadMe.MD
+!envisionbox_integration/official_envisionbox/requirements.txt
+!envisionbox_integration/official_envisionbox/checkpoints/download_ckpts.sh
