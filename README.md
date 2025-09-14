@@ -1,4 +1,4 @@
-# MaskAnyone-Temporal: Temporally-Consistent Privacy Protection for Behavioural-Science Video
+# MaskAnyone-Temporal: A Hybrid Fusion Approach for Robust Video De-identification
 
 This repository contains the official codebase for my Master's thesis in collaboration with Hasso-Plattner-Institut and University of Potsdam.
 
@@ -84,21 +84,28 @@ python run_with_config.py --config configs/datasets/ted_talks.yaml
 ```bash
 python run_all_sequences_comparison.py
 ```
-<!-- 
 ## Project Structure
 
 ```
 thesis-temporal-deid/
 ├── integrated_temporal_pipeline_hybrid.py    # Main hybrid pipeline
-├── run_all_sequences_comparison.py           # Comprehensive comparison script
+├── comprehensive_baseline_comparison.py      # Comprehensive comparison script
+├── run_all_sequences_comparison.py           # All sequences comparison runner
+├── run_hybrid_on_davis.py                    # Hybrid pipeline runner
 ├── run_with_config.py                        # Configuration-based runner
-├── run_samurai_baseline.py                   # SAMURAI baseline with skip-completed
-├── run_tsp_sam_baseline.py                   # TSP-SAM baseline with skip-completed
+├── run_samurai_baseline.py                   # SAMURAI baseline runner
+├── run_tsp_sam_baseline.py                   # TSP-SAM baseline runner
+├── tests/                                    # Organized test files
+│   ├── unit/                                 # Unit tests
+│   ├── baseline/                             # Baseline model tests
+│   ├── pipeline/                             # Pipeline integration tests
+│   └── integration/                          # Integration tests
+├── scripts/                                  # Utility and analysis scripts
+├── evaluation/                               # Evaluation framework
+├── envisionbox_integration/                  # GUI integration components
 ├── samurai_official/                         # SAMURAI implementation
 ├── tsp_sam_official/                         # TSP-SAM implementation  
 ├── maskanyone/                               # MaskAnyone implementation
-├── evaluation/                               # Evaluation framework
-├── testing/                                  # Testing framework
 ├── input/                                    # Datasets (DAVIS2017, TED, Team Ten, Tragic Talkers)
 ├── output/                                   # Generated masks and results
 ├── configs/                                  # Configuration files
@@ -133,11 +140,28 @@ thesis-temporal-deid/
 
 ### Run Tests
 ```bash
-# Test specific components
-python test_integrated_temporal_pipeline_hybrid.py
-python test_run_samurai_baseline.py
-python test_run_tsp_sam_baseline.py
+# Run all tests
+python -m pytest tests/
+
+# Run specific test categories
+python -m pytest tests/unit/          # Unit tests
+python -m pytest tests/baseline/      # Baseline model tests
+python -m pytest tests/pipeline/      # Pipeline integration tests
+python -m pytest tests/integration/   # Integration tests
 ```
+
+## Scripts
+
+Utility and analysis scripts are organized in the `scripts/` directory:
+
+```bash
+# Run utility scripts
+python scripts/cleanup_test_output.py
+python scripts/show_table_data.py
+python scripts/generate_baseline_report.py
+```
+
+See `scripts/README.md` for detailed usage information.
 
 ## Troubleshooting
 
