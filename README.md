@@ -116,8 +116,9 @@ thesis-temporal-deid/
 │       └── tragic_talkers.yaml               # Tragic Talkers configuration
 ├── docs/                                     # Documentation
 └── wandb/                                    # Experiment tracking
-``` -->
-## Key Features
+``` 
+
+<!-- ## Key Features
 
 ### Skip-Completed Functionality
 - **Resume Processing**: Automatically skip sequences that already have output files
@@ -133,7 +134,7 @@ thesis-temporal-deid/
 - **Intelligent Mask Fusion**: Quality-based selection and temporal smoothing
 - **Motion Detection**: Kalman filtering and motion history analysis
 - **Scene Adaptation**: Automatic lighting detection and person prioritization
-- **Memory Management**: Efficient GPU memory handling and chunked processing
+- **Memory Management**: Efficient GPU memory handling and chunked processing -->
 
 ## Testing
 
