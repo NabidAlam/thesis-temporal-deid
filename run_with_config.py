@@ -75,7 +75,12 @@ def run_pipeline_with_config(input_video, output_dir, config_path, **kwargs):
         # Process video
         if kwargs.get('enable_chunked_processing'):
             print("Using chunked processing mode")
-            pipeline.process_video_chunked()
+            # Try to get chunk_size from kwargs, then from config, then default to 25
+            chunk_size = kwargs.get('chunk_size')
+            if chunk_size is None:
+                chunk_size = config.get('dataset', {}).get('processing', {}).get('chunk_size', 25)
+            print(f"Using chunk size: {chunk_size}")
+            pipeline.process_video_chunked(chunk_size=chunk_size)
         else:
             print("Using standard processing mode")
             pipeline.process_video()

@@ -1,70 +1,45 @@
 dataset:
   name: "tragic_talkers"
   type: "conversation"
-  description: "Conversational videos with natural lighting and emotional content - optimized for interviews and emotional expressions"
+  description: "Shakespearean conversational videos with high-resolution capture - optimized for dramatic performances and emotional expressions"
   
   # Core pipeline parameters
   processing:
-    max_frames: null  # null = process all frames
-    temporal_window_size: 7  # TSP-SAM temporal window
-    confidence_threshold: 0.65  # Balanced threshold
-    mask_quality_threshold: 0.6  # Standard quality
+    max_frames: null  # null = process all frames (150 frames)
+    temporal_window_size: 5  # Reduced for conversational content
+    confidence_threshold: 0.3  # Lowered for better detection on dramatic content
+    mask_quality_threshold: 0.4  # Lowered quality threshold for better detection
+    chunk_size: 25  # Process in chunks for memory efficiency
     
   # Model-specific configurations
   tsp_sam:
-    input_sizes: [352, 320, 256]  # Paper-validated square dimensions
+    input_sizes: [1024, 896, 768]  # Optimized for high-res content
     temporal_processing: true
-    fallback_to_single_frame: true
-    checkpoint_path: "tsp_sam_official/model_checkpoint/pvt_v2_b5.pth"
-    fallback_checkpoint: "tsp_sam_official/model_checkpoint/best_checkpoint.pth"
-    adaptive_threshold: true  # Enable dynamic threshold adjustment
+    fallback_threshold: 0.2  # Lower fallback threshold
+    min_mask_area: 100  # Smaller minimum area for dramatic content
     
   samurai:
-    person_detection: true
-    confidence_threshold: 0.5  # Standard threshold
-    max_persons: 50  # Moderate number of people
-    checkpoint_path: "samurai_official/sam2/checkpoints/sam2.1_hiera_large.pt"
-    enable_caching: true  # Enable frame caching
+    enabled: true
+    confidence_threshold: 0.25  # Lower confidence for better detection
+    max_masks: 10  # Allow more masks for complex scenes
     
-  maskanyone:
-    deidentification_strength: "medium"  # Balanced de-identification
-    preserve_identity: false
-    checkpoint_path: "maskanyone/worker/masking/mask_renderer.py"
+  mask_any_one:
+    enabled: true
+    confidence_threshold: 0.3  # Lower threshold for better detection
+    max_masks: 8
     
-  # Tragic talkers specific optimizations
-  tragic_optimizations:
-    natural_lighting: true
-    emotional_content: true
-    conversational_setting: true
-    moderate_motion: true
-    interview_setting: true
-    expressive_gestures: true
-    varied_backgrounds: true
-    
-  # Output settings
+  # Output configuration
   output:
-    save_original_frames: true
-    save_deidentified_frames: true
-    save_masks: false
-    save_performance_report: true
-    frame_format: "jpg"
-    quality: 95
+    save_frames: true
+    save_masks: true
+    save_videos: true
+    video_fps: 10
+    deidentification_method: "blurring"
+    blur_strength: 15
     
-  # Performance settings
-  performance:
-    enable_cuda: true
-    batch_size: 1
+  # Performance optimization
+  optimization:
+    use_gpu: true
+    batch_processing: false
     memory_efficient: true
-    debug_mode: false
-    
-  # Cache settings
-  cache:
-    enable_frame_cache: true
-    max_cache_size: 1500  # Medium cache size
-    cache_ttl: 5400  # 1.5 hours
-    
-  # Fallback strategies
-  fallback:
-    tsp_sam_fallback: "single_frame"
-    samurai_fallback: "lower_threshold"
-    maskanyone_fallback: "balanced_deidentification"
+    temporal_smoothing: true

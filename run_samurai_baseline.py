@@ -212,7 +212,8 @@ def run_samurai_davis_baseline(input_path, output_path, checkpoint_path=None, se
                 aligned_pairs.append((img_file, ann_file))
         
         if max_frames:
-            aligned_pairs = aligned_pairs[:max_frames]
+            # Start from frame 2 to match TSP-SAM (for fair comparison)
+            aligned_pairs = aligned_pairs[2:2+max_frames]
         
         print(f"Processing {len(aligned_pairs)} frames for {seq_path.name}")
         
@@ -818,8 +819,10 @@ def process_sequence_with_samurai(predictor, aligned_pairs, seq_output_dir, seq_
                             print(f"[WARNING] Could not load ground truth for frame {frame_idx}")
                         
                         # Save mask
-                        print(f"[DEBUG] Saving mask for frame {frame_idx}...")
-                        output_name = f"{frame_idx:05d}.png"
+                        # Adjust frame_idx to account for starting from frame 2
+                        actual_frame_idx = frame_idx + 2
+                        print(f"[DEBUG] Saving mask for frame {frame_idx} (actual frame {actual_frame_idx})...")
+                        output_name = f"{actual_frame_idx:05d}.png"
                         output_file = seq_output_dir / output_name
                         
                         mask_255 = (mask * 255).astype(np.uint8)
@@ -967,7 +970,8 @@ def run_samurai_placeholder(input_path, output_path, sequence, max_frames):
         print(f"[DEBUG] Created {len(aligned_pairs)} aligned pairs")
         
         if max_frames:
-            aligned_pairs = aligned_pairs[:max_frames]
+            # Start from frame 2 to match TSP-SAM (for fair comparison)
+            aligned_pairs = aligned_pairs[2:2+max_frames]
             print(f"[DEBUG] Limited to {len(aligned_pairs)} frames due to max_frames={max_frames}")
         
         print(f"[DEBUG] Final frame count: {len(aligned_pairs)}")
@@ -991,7 +995,9 @@ def run_samurai_placeholder_sequence(aligned_pairs, seq_output_dir, seq_name):
     processed_frames = 0
     
     for frame_idx, (img_file, ann_file) in enumerate(aligned_pairs):
-        print(f"[DEBUG] Processing frame {frame_idx + 1}/{len(aligned_pairs)}")
+        # Adjust frame_idx to account for starting from frame 2
+        actual_frame_idx = frame_idx + 2
+        print(f"[DEBUG] Processing frame {frame_idx + 1}/{len(aligned_pairs)} (actual frame {actual_frame_idx})")
         print(f"[DEBUG] Image file: {img_file}")
         print(f"[DEBUG] Annotation file: {ann_file}")
         
@@ -1004,7 +1010,7 @@ def run_samurai_placeholder_sequence(aligned_pairs, seq_output_dir, seq_name):
                 print(f"[DEBUG] GT mask loaded - shape: {gt_mask.shape}")
                 
                 # Save as output mask (placeholder just copies GT)
-                output_name = f"{frame_idx:05d}.png"
+                output_name = f"{actual_frame_idx:05d}.png"
                 output_file = seq_output_dir / output_name
                 
                 print(f"[DEBUG] Saving placeholder mask to: {output_file}")
@@ -1449,7 +1455,8 @@ def run_samurai_actual(input_path, output_path, predictor, sequence=None, max_fr
         print(f"[DEBUG] Created {len(aligned_pairs)} aligned pairs")
         
         if max_frames:
-            aligned_pairs = aligned_pairs[:max_frames]
+            # Start from frame 2 to match TSP-SAM (for fair comparison)
+            aligned_pairs = aligned_pairs[2:2+max_frames]
             print(f"[DEBUG] Limited to {len(aligned_pairs)} frames due to max_frames={max_frames}")
         
         print(f"[DEBUG] Final frame count: {len(aligned_pairs)}")
