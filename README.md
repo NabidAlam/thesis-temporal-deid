@@ -117,7 +117,6 @@ thesis-temporal-deid/
 ├── docs/                                     # Documentation
 └── wandb/                                    # Experiment tracking
 ``` -->
-<!-- 
 ## Key Features
 
 ### Skip-Completed Functionality
@@ -134,7 +133,7 @@ thesis-temporal-deid/
 - **Intelligent Mask Fusion**: Quality-based selection and temporal smoothing
 - **Motion Detection**: Kalman filtering and motion history analysis
 - **Scene Adaptation**: Automatic lighting detection and person prioritization
-- **Memory Management**: Efficient GPU memory handling and chunked processing -->
+- **Memory Management**: Efficient GPU memory handling and chunked processing
 
 ## Testing
 
