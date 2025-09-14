@@ -1,0 +1,13 @@
+Metric,Value
+Total Sequences,90
+Mean IoU (TSP-SAM),0.841
+Mean IoU (SAMURAI),0.854
+Mean Temporal Consistency (TSP-SAM),0.677
+Mean Temporal Consistency (SAMURAI),0.693
+IoU Standard Deviation (TSP-SAM),0.058
+IoU Standard Deviation (SAMURAI),0.053
+Performance Gap (SAMURAI - TSP-SAM),0.014
+Correlation Coefficient,0.997
+Sequences where TSP-SAM > SAMURAI,1
+Sequences where SAMURAI > TSP-SAM,89
+Sequences with equal performance,0
