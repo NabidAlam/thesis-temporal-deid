@@ -1,0 +1,61 @@
+{
+  "sam2": {
+    "model_type": "sam2_hiera_l",
+    "checkpoint_path": "checkpoints/sam2_hiera_large.pt",
+    "device": "cuda"
+  },
+  "video_processing": {
+    "max_frames": 1000,
+    "frame_skip": 1,
+    "output_fps": 30,
+    "output_format": "mp4v"
+  },
+  "hybrid_integration": {
+    "enable_text_prompts": true,
+    "enable_selective_deidentification": true,
+    "confidence_threshold": 0.5,
+    "blur_strength": 15,
+    "overlap_threshold": 10
+  },
+  "hybrid_pipeline": {
+    "debug_mode": true,
+    "use_wandb": false,
+    "enable_chunked_processing": true,
+    "chunk_size": 50,
+    "deidentification_strategy": "blurring"
+  },
+  "behavioral_scenarios": {
+    "baby_with_ball": {
+      "text_prompts": ["baby", "ball", "person", "face", "hand"],
+      "deidentify_objects": ["person", "face"],
+      "preserve_objects": ["ball", "baby", "hand"],
+      "target_objects": ["ball"],
+      "gaze_objects": ["baby", "face"]
+    },
+    "person_on_stage": {
+      "text_prompts": ["person", "face", "audience", "stage", "podium"],
+      "deidentify_objects": ["audience", "face"],
+      "preserve_objects": ["person", "stage", "podium"],
+      "target_objects": ["person", "podium"],
+      "gaze_objects": ["audience", "face"]
+    },
+    "multiple_people": {
+      "text_prompts": ["person", "face", "group", "interaction"],
+      "deidentify_objects": ["face"],
+      "preserve_objects": ["person", "group", "interaction"],
+      "target_objects": ["person"],
+      "gaze_objects": ["face"]
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "log_to_file": true,
+    "log_to_console": true
+  },
+  "output": {
+    "save_processed_videos": true,
+    "save_behavioral_data": true,
+    "save_segmentation_masks": false,
+    "output_directory": "output"
+  }
+}
