@@ -2,7 +2,7 @@
 
 This integration combines your hybrid temporal pipeline with EnvisionObjectAnnotator capabilities for multimodal object tracking and selective de-identification in behavioral research scenarios.
 
-## 🎯 Purpose
+## Purpose
 
 This integration enables:
 - **Text-guided object segmentation** using SAMURAI's multimodal capabilities
@@ -10,7 +10,7 @@ This integration enables:
 - **Object overlap detection** for behavioral research (e.g., "baby looking at ball")
 - **Privacy-preserving behavioral analysis** for research applications
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 envisionbox_integration/
@@ -29,7 +29,7 @@ envisionbox_integration/
 └── README.md                      # This file
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Setup Environment
 
@@ -65,7 +65,7 @@ python test_scenarios/test_behavioral_scenarios.py baby_with_ball
 python integration/hybrid_envisionbox_integration.py input_video.mp4 output_video.mp4
 ```
 
-## 🧪 Behavioral Scenarios
+## Behavioral Scenarios
 
 ### 1. Baby with Ball
 - **Purpose**: Track ball movement, de-identify people, detect "baby looking at ball"
@@ -88,7 +88,7 @@ python integration/hybrid_envisionbox_integration.py input_video.mp4 output_vide
 - **Preserve**: People, groups, interactions
 - **Overlap Detection**: Face-to-face interactions
 
-## 🔧 Configuration
+## Configuration
 
 Edit `configs/main_config.json` to customize:
 
@@ -106,7 +106,7 @@ Edit `configs/main_config.json` to customize:
 }
 ```
 
-## 📊 Output Files
+## Output Files
 
 ### Processed Videos
 - `output/processed_[scenario].mp4` - Videos with selective de-identification
@@ -118,7 +118,7 @@ Edit `configs/main_config.json` to customize:
 ### Logs
 - `logs/hybrid_integration.log` - Processing logs
 
-## 🔍 Key Features
+## Key Features
 
 ### Text-Guided Segmentation
 ```python
@@ -147,7 +147,7 @@ overlaps = integration.detect_object_overlaps(
 )
 ```
 
-## 🎓 Research Applications
+## Research Applications
 
 ### Privacy-Preserving Behavioral Research
 - **Infant Development**: Track object interactions while protecting privacy
@@ -159,7 +159,7 @@ overlaps = integration.detect_object_overlaps(
 - **Gesture Recognition**: Track hand movements and object interactions
 - **Attention Studies**: Analyze focus patterns in complex environments
 
-## 🔗 Integration with Your Hybrid Pipeline
+## Integration with Your Hybrid Pipeline
 
 This integration extends your existing hybrid temporal pipeline with:
 
@@ -168,14 +168,14 @@ This integration extends your existing hybrid temporal pipeline with:
 3. **Selective De-identification**: Privacy-preserving analysis
 4. **Behavioral Data Export**: CSV and ELAN format support
 
-## 📈 Performance Considerations
+## Performance Considerations
 
 - **GPU Recommended**: SAM2 models benefit from CUDA acceleration
 - **Memory Requirements**: 8GB+ RAM recommended for large videos
 - **Processing Time**: ~2-5 seconds per frame depending on complexity
 - **Optimization**: Frame skipping and lazy loading available
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -192,21 +192,21 @@ export LOG_LEVEL=DEBUG
 python integration/hybrid_envisionbox_integration.py input.mp4 output.mp4
 ```
 
-## 📚 References
+## References
 
 - [EnvisionObjectAnnotator](https://github.com/DavAhm/EnvisionObjectAnnotator)
 - [SAM2 Paper](https://arxiv.org/abs/2408.00714)
 - [Your Hybrid Pipeline](../integrated_temporal_pipeline_hybrid.py)
 
-## 🤝 Contributing
+## Contributing
 
-This integration is part of your thesis research. Key areas for extension:
+This integration is part of thesis research. Key areas for extension:
 
 1. **Additional Behavioral Scenarios**: Add more research use cases
 2. **Performance Optimization**: Improve processing speed
 3. **Integration Enhancements**: Better hybrid pipeline integration
 4. **Evaluation Metrics**: Add more behavioral analysis metrics
 
-## 📄 License
+## License
 
 Part of your thesis research project. See main project license.
