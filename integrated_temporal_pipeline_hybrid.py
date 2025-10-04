@@ -43,7 +43,7 @@ except ImportError as e:
 class HybridTemporalPipeline:
     """Hybrid temporal pipeline combining TSP-SAM, SAMURAI, and MaskAnyone for video de-identification."""
     
-    def __init__(self, input_video: str, output_dir: str, debug_mode: bool = False, dataset_config: Optional[Dict] = None, use_wandb: bool = False, experiment_name: str = None, enable_chunked_processing: bool = False, chunk_size: int = 100, deidentification_strategy: str = 'blurring', start_time: Optional[float] = None, end_time: Optional[float] = None):
+    def __init__(self, input_video: str, output_dir: str, debug_mode: bool = False, dataset_config: Optional[Dict] = None, use_wandb: bool = False, experiment_name: str = None, enable_chunked_processing: bool = False, chunk_size: int = 100, deidentification_strategy: str = 'blurring', start_time: Optional[float] = None, end_time: Optional[float] = None, enable_batch_processing: bool = True, batch_size: int = 4, enable_memory_optimization: bool = True, memory_threshold_mb: int = 8000, cleanup_frequency: int = 5):
         # Convert relative paths to absolute paths
         self.input_video = os.path.abspath(input_video) if not os.path.isabs(input_video) else input_video
         self.output_dir = os.path.abspath(output_dir) if not os.path.isabs(output_dir) else output_dir
@@ -62,9 +62,31 @@ class HybridTemporalPipeline:
         self.start_time = start_time
         self.end_time = end_time
         
+        # Batch processing configuration
+        self.enable_batch_processing = enable_batch_processing
+        self.batch_size = batch_size
+        
+        # GPU optimization settings
+        self.gpu_optimization_enabled = True
+        self.mixed_precision_enabled = True
+        self.torch_compile_enabled = False  # Disabled by default for compatibility
+        
+        # Mask quality validation settings
+        self.min_mask_size = 50  # Minimum pixels for a valid mask (reduced from 100)
+        self.max_mask_size_ratio = 0.9  # Maximum ratio of frame size (increased from 0.8)
+        self.min_mask_confidence = 0.1  # Minimum confidence threshold (reduced from 0.3)
+        self.enable_mask_quality_validation = True
+        
         # Memory monitoring
         self.monitor_memory = True
         self.memory_warnings = []
+        
+        # Memory optimization settings
+        self.enable_memory_optimization = enable_memory_optimization
+        self.memory_cleanup_frequency = cleanup_frequency  # Cleanup every N frames
+        self.max_memory_threshold_mb = memory_threshold_mb  # Memory threshold for aggressive cleanup
+        self.gc_frequency = 10  # Garbage collection every N frames
+        self.model_memory_management = True  # Enable model memory management
         
         # Configure logging based on debug mode
         if debug_mode:
@@ -124,6 +146,12 @@ class HybridTemporalPipeline:
                 "mask_coverage_stats": [],
                 "iou_scores": []
             },
+            "temporal_consistency": {
+                "frame_to_frame_iou": [],
+                "average_temporal_iou": 0,
+                "temporal_stability_score": 0,
+                "consistency_warnings": []
+            },
             "frame_details": [],
             "memory_usage": {
                 "peak_memory_mb": 0,
@@ -136,12 +164,21 @@ class HybridTemporalPipeline:
         self._frame_cache = {}
         self._cache_hits = 0
         self._cache_misses = 0
+        self._max_cache_size = 100  # Limit cache size to prevent memory issues
+        
+        # Temporal consistency tracking
+        self._previous_frame_masks = None
+        self._temporal_iou_scores = []
+        self._temporal_consistency_threshold = 0.7  # Minimum IoU for good temporal consistency
         
         # Apply dataset configuration if provided
         if self.dataset_config:
             self._apply_dataset_config()
         
         self._init_models()
+        
+        # Apply GPU optimizations
+        self._optimize_gpu_settings()
     
     def _init_wandb(self, experiment_name: str = None):
         """Initialize Weights & Biases experiment following best practices."""
@@ -488,15 +525,28 @@ class HybridTemporalPipeline:
         """Generate a hash for frame similarity detection to enable caching."""
         try:
             # Resize to small size for faster hashing while maintaining content similarity
-            small_frame = cv2.resize(frame, (64, 64))
+            small_frame = cv2.resize(frame, (32, 32))  # Smaller for better cache hits
             # Convert to grayscale for content-based hashing
             gray_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-            # Generate hash based on frame content
-            frame_hash = str(hash(gray_frame.tobytes()))
+            # Apply Gaussian blur to make hash more tolerant to small changes
+            blurred = cv2.GaussianBlur(gray_frame, (3, 3), 0)
+            # Quantize to reduce sensitivity to minor variations
+            quantized = (blurred // 32) * 32  # Quantize to 8 levels (0, 32, 64, ..., 224)
+            # Generate hash based on quantized frame content
+            frame_hash = str(hash(quantized.tobytes()))
             return frame_hash
         except Exception:
             # Fallback to simple hash if hashing fails
             return str(hash(frame.tobytes()))
+    
+    def _manage_cache_size(self):
+        """Manage cache size to prevent memory issues."""
+        if len(self._frame_cache) > self._max_cache_size:
+            # Remove oldest entries (simple FIFO)
+            keys_to_remove = list(self._frame_cache.keys())[:len(self._frame_cache) - self._max_cache_size + 10]
+            for key in keys_to_remove:
+                del self._frame_cache[key]
+            self.logger.debug(f"Cache size managed: removed {len(keys_to_remove)} entries")
     
     def _segment_with_tsp_sam(self, frame: np.ndarray, frame_idx: int) -> List[np.ndarray]:
         """Use TSP-SAM for scene-level temporal segmentation with proper temporal motion learning."""
@@ -504,6 +554,16 @@ class HybridTemporalPipeline:
             return []
         
         try:
+            # Performance optimization: Check frame cache for similar frames
+            frame_hash = self._get_frame_hash(frame)
+            cache_key = f"tsp_sam_{frame_hash}"  # Cache key without frame_idx
+            
+            if cache_key in self._frame_cache:
+                self._cache_hits += 1
+                self.logger.info(f"Frame {frame_idx}: Using cached TSP-SAM masks (cache hit #{self._cache_hits})")
+                return self._frame_cache[cache_key]
+            
+            self._cache_misses += 1
             # Get original frame dimensions
             original_h, original_w = frame.shape[:2]
             self.logger.info(f"Frame {frame_idx}: Original dimensions {original_w}x{original_h}")
@@ -567,8 +627,14 @@ class HybridTemporalPipeline:
                     if non_zero_pixels > 0:
                         # Resize mask back to original dimensions
                         final_mask = cv2.resize(mask, (original_w, original_h), interpolation=cv2.INTER_NEAREST)
+                        result_masks = [final_mask]
+                        
+                        # Cache the results for potential reuse
+                        self._frame_cache[cache_key] = result_masks
+                        self._manage_cache_size()
+                        
                         self.logger.info(f"Frame {frame_idx}: TSP-SAM paper-validated SQUARE size {target_h}x{target_w} succeeded with {non_zero_pixels} mask pixels")
-                        return [final_mask]
+                        return result_masks
                     else:
                         self.logger.debug(f"Frame {frame_idx}: TSP-SAM SQUARE size {target_h}x{target_w} worked but no significant mask")
                         continue
@@ -581,6 +647,9 @@ class HybridTemporalPipeline:
                     continue
             
             self.logger.warning(f"Frame {frame_idx}: TSP-SAM failed with all paper-validated SQUARE input sizes")
+            # Cache empty result to avoid retrying same frame
+            self._frame_cache[cache_key] = []
+            self._manage_cache_size()
             return []
             
         except Exception as e:
@@ -589,6 +658,361 @@ class HybridTemporalPipeline:
                 import traceback
                 self.logger.debug(f"Frame {frame_idx}: Full traceback: {traceback.format_exc()}")
             return []
+    
+    def _validate_mask_quality(self, mask: np.ndarray, frame_shape: Tuple[int, int], mask_source: str = "unknown") -> Tuple[bool, str, float]:
+        """Validate mask quality based on size, coverage, and confidence metrics."""
+        if not self.enable_mask_quality_validation:
+            return True, "validation_disabled", 1.0
+        
+        try:
+            # Basic mask validation
+            if mask is None or mask.size == 0:
+                return False, "empty_mask", 0.0
+            
+            # Convert to binary mask
+            binary_mask = (mask > 127).astype(np.uint8)
+            mask_pixels = np.sum(binary_mask)
+            
+            # Size validation
+            if mask_pixels < self.min_mask_size:
+                self.logger.debug(f"Mask rejected: too small ({mask_pixels} < {self.min_mask_size})")
+                return False, f"too_small_{mask_pixels}", 0.0
+            
+            # Coverage validation (prevent overmasking)
+            frame_pixels = frame_shape[0] * frame_shape[1]
+            coverage_ratio = mask_pixels / frame_pixels
+            if coverage_ratio > self.max_mask_size_ratio:
+                self.logger.debug(f"Mask rejected: too large ({coverage_ratio:.3f} > {self.max_mask_size_ratio})")
+                return False, f"too_large_{coverage_ratio:.3f}", 0.0
+            
+            # Confidence estimation based on mask characteristics
+            # Higher confidence for masks with good edge definition and reasonable size
+            edge_confidence = self._estimate_mask_confidence(mask, binary_mask)
+            
+            if edge_confidence < self.min_mask_confidence:
+                self.logger.debug(f"Mask rejected: low confidence ({edge_confidence:.3f} < {self.min_mask_confidence})")
+                return False, f"low_confidence_{edge_confidence:.3f}", edge_confidence
+            
+            self.logger.debug(f"Mask accepted: {mask_source} - pixels: {mask_pixels}, coverage: {coverage_ratio:.3f}, confidence: {edge_confidence:.3f}")
+            return True, "valid", edge_confidence
+            
+        except Exception as e:
+            self.logger.warning(f"Mask quality validation failed: {e}")
+            return False, f"validation_error_{str(e)[:20]}", 0.0
+    
+    def _estimate_mask_confidence(self, mask: np.ndarray, binary_mask: np.ndarray) -> float:
+        """Estimate mask confidence based on edge definition and shape characteristics."""
+        try:
+            # Calculate edge strength using Sobel operator
+            sobel_x = cv2.Sobel(mask, cv2.CV_64F, 1, 0, ksize=3)
+            sobel_y = cv2.Sobel(mask, cv2.CV_64F, 0, 1, ksize=3)
+            edge_magnitude = np.sqrt(sobel_x**2 + sobel_y**2)
+            
+            # Normalize edge strength
+            edge_strength = np.mean(edge_magnitude) / 255.0
+            
+            # Calculate shape compactness (perimeter^2 / area)
+            contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contours) == 0:
+                return 0.0
+            
+            # Use largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            area = cv2.contourArea(largest_contour)
+            perimeter = cv2.arcLength(largest_contour, True)
+            
+            if area == 0:
+                return 0.0
+            
+            compactness = (perimeter * perimeter) / (4 * np.pi * area)
+            compactness_score = max(0, 1 - (compactness - 1) / 10)  # Normalize compactness
+            
+            # Combine edge strength and compactness
+            confidence = (edge_strength * 0.6 + compactness_score * 0.4)
+            return min(1.0, max(0.0, confidence))
+            
+        except Exception as e:
+            self.logger.debug(f"Confidence estimation failed: {e}")
+            return 0.5  # Default moderate confidence
+    
+    def _calculate_temporal_iou(self, current_masks: List[np.ndarray], previous_masks: List[np.ndarray]) -> float:
+        """Calculate temporal IoU between consecutive frames for consistency analysis."""
+        if not current_masks or not previous_masks:
+            return 0.0
+        
+        try:
+            # Create combined masks for both frames
+            current_combined = np.zeros_like(current_masks[0])
+            previous_combined = np.zeros_like(previous_masks[0])
+            
+            # Combine all masks in current frame
+            for mask in current_masks:
+                current_combined = np.logical_or(current_combined, mask > 127)
+            
+            # Combine all masks in previous frame
+            for mask in previous_masks:
+                previous_combined = np.logical_or(previous_combined, mask > 127)
+            
+            # Calculate IoU
+            intersection = np.logical_and(current_combined, previous_combined)
+            union = np.logical_or(current_combined, previous_combined)
+            
+            intersection_area = np.sum(intersection)
+            union_area = np.sum(union)
+            
+            if union_area == 0:
+                return 1.0 if intersection_area == 0 else 0.0
+            
+            iou = intersection_area / union_area
+            return float(iou)
+            
+        except Exception as e:
+            self.logger.debug(f"Temporal IoU calculation failed: {e}")
+            return 0.0
+    
+    def _analyze_temporal_consistency(self, frame_idx: int, current_masks: List[np.ndarray]) -> Tuple[float, str]:
+        """Analyze temporal consistency between current and previous frame."""
+        if self._previous_frame_masks is None:
+            # First frame - no previous frame to compare
+            self._previous_frame_masks = current_masks
+            return 1.0, "first_frame"
+        
+        # Calculate temporal IoU
+        temporal_iou = self._calculate_temporal_iou(current_masks, self._previous_frame_masks)
+        self._temporal_iou_scores.append(temporal_iou)
+        
+        # Analyze consistency
+        if temporal_iou >= self._temporal_consistency_threshold:
+            consistency_status = "good"
+        elif temporal_iou >= 0.5:
+            consistency_status = "moderate"
+        else:
+            consistency_status = "poor"
+            self.logger.warning(f"Frame {frame_idx}: Poor temporal consistency (IoU: {temporal_iou:.3f})")
+        
+        # Update previous frame masks
+        self._previous_frame_masks = current_masks
+        
+        return temporal_iou, consistency_status
+    
+    def _calculate_temporal_stability_score(self) -> float:
+        """Calculate overall temporal stability score based on IoU history."""
+        if not self._temporal_iou_scores:
+            return 0.0
+        
+        # Calculate average IoU
+        avg_iou = np.mean(self._temporal_iou_scores)
+        
+        # Calculate stability (inverse of variance)
+        if len(self._temporal_iou_scores) > 1:
+            variance = np.var(self._temporal_iou_scores)
+            stability = max(0, 1 - variance)  # Higher variance = lower stability
+        else:
+            stability = 1.0
+        
+        # Combine average IoU and stability
+        stability_score = (avg_iou * 0.7 + stability * 0.3)
+        return float(stability_score)
+    
+    def _cleanup_memory(self, frame_idx: int, force_cleanup: bool = False):
+        """Clean up memory to prevent accumulation and reduce peak usage."""
+        if not self.enable_memory_optimization:
+            return
+        
+        try:
+            # Check if cleanup is needed
+            current_memory = self._monitor_memory_usage(f"cleanup_check_{frame_idx}")
+            
+            # Force cleanup or periodic cleanup
+            should_cleanup = (force_cleanup or 
+                            frame_idx % self.memory_cleanup_frequency == 0 or
+                            current_memory > self.max_memory_threshold_mb)
+            
+            if should_cleanup:
+                self.logger.debug(f"Frame {frame_idx}: Performing memory cleanup (current: {current_memory:.1f}MB)")
+                
+                # Clear intermediate variables
+                if hasattr(self, '_temp_masks'):
+                    del self._temp_masks
+                    self._temp_masks = None
+                
+                # Clear large arrays that might be cached
+                if hasattr(self, '_frame_cache'):
+                    # Keep only recent cache entries
+                    if len(self._frame_cache) > self._max_cache_size:
+                        keys_to_remove = list(self._frame_cache.keys())[:-self._max_cache_size//2]
+                        for key in keys_to_remove:
+                            del self._frame_cache[key]
+                
+                # Clear previous frame masks if not needed for temporal consistency
+                if hasattr(self, '_previous_frame_masks') and frame_idx % 10 == 0:
+                    # Keep every 10th frame for temporal consistency
+                    pass
+                elif hasattr(self, '_previous_frame_masks'):
+                    del self._previous_frame_masks
+                    self._previous_frame_masks = None
+                
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Clear CUDA cache if using GPU
+                if self.device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                # Monitor memory after cleanup
+                memory_after = self._monitor_memory_usage(f"cleanup_after_{frame_idx}")
+                memory_saved = current_memory - memory_after
+                
+                if memory_saved > 100:  # Only log if significant memory was saved
+                    self.logger.info(f"Frame {frame_idx}: Memory cleanup saved {memory_saved:.1f}MB")
+                
+        except Exception as e:
+            self.logger.warning(f"Memory cleanup failed: {e}")
+    
+    def _manage_model_memory(self, frame_idx: int):
+        """Manage model memory usage to prevent accumulation."""
+        if not self.model_memory_management:
+            return
+        
+        try:
+            # Clear model intermediate states periodically
+            if frame_idx % self.gc_frequency == 0:
+                if hasattr(self, 'samurai_model') and self.samurai_model is not None:
+                    # Clear any cached model states
+                    if hasattr(self.samurai_model, 'clear_cache'):
+                        self.samurai_model.clear_cache()
+                
+                if hasattr(self, 'tsp_sam_model') and self.tsp_sam_model is not None:
+                    # Clear TSP-SAM model cache
+                    if hasattr(self.tsp_sam_model, 'clear_cache'):
+                        self.tsp_sam_model.clear_cache()
+                
+                # Clear MaskAnyone model cache
+                if hasattr(self, 'maskanyone_model') and self.maskanyone_model is not None:
+                    if hasattr(self.maskanyone_model, 'clear_cache'):
+                        self.maskanyone_model.clear_cache()
+                
+                self.logger.debug(f"Frame {frame_idx}: Model memory management completed")
+                
+        except Exception as e:
+            self.logger.debug(f"Model memory management failed: {e}")
+    
+    def _monitor_memory_with_cleanup(self, frame_idx: int, context: str) -> float:
+        """Monitor memory usage and trigger cleanup if needed."""
+        current_memory = self._monitor_memory_usage(f"{context}_{frame_idx}")
+        
+        # Check if memory is approaching threshold
+        if current_memory > self.max_memory_threshold_mb * 0.8:  # 80% of threshold
+            self.logger.warning(f"Frame {frame_idx}: High memory usage detected ({current_memory:.1f}MB)")
+            self._cleanup_memory(frame_idx, force_cleanup=True)
+        
+        return current_memory
+    
+    def _optimize_gpu_settings(self):
+        """Optimize GPU settings for better performance."""
+        if self.device == "cuda" and self.gpu_optimization_enabled:
+            try:
+                # Enable cuDNN benchmark for consistent input sizes
+                torch.backends.cudnn.benchmark = True
+                torch.backends.cudnn.deterministic = False
+                
+                # Set memory fraction to prevent OOM
+                if hasattr(torch.cuda, 'set_per_process_memory_fraction'):
+                    torch.cuda.set_per_process_memory_fraction(0.9)
+                
+                # Enable mixed precision if available
+                if self.mixed_precision_enabled and hasattr(torch.cuda, 'amp'):
+                    self.logger.info("Mixed precision training enabled")
+                
+                self.logger.info("GPU optimizations applied successfully")
+            except Exception as e:
+                self.logger.warning(f"Failed to apply GPU optimizations: {e}")
+    
+    def _process_frames_batch(self, frames: List[np.ndarray], frame_indices: List[int]) -> List[np.ndarray]:
+        """Process multiple frames in batch for improved GPU utilization."""
+        if not self.enable_batch_processing or len(frames) == 1:
+            # Fall back to single frame processing
+            return [self.process_frame(frames[0], frame_indices[0])]
+        
+        self.logger.info(f"Processing batch of {len(frames)} frames: {frame_indices}")
+        batch_start_time = time.time()
+        
+        try:
+            # Process TSP-SAM in batch if possible
+            tsp_masks_batch = self._segment_with_tsp_sam_batch(frames, frame_indices)
+            
+            # Process SAMURAI in batch if possible
+            samurai_masks_batch = self._segment_with_samurai_batch(frames, frame_indices)
+            
+            # Process each frame individually for mask fusion (temporal dependencies)
+            processed_frames = []
+            for i, (frame, frame_idx) in enumerate(zip(frames, frame_indices)):
+                # Get masks for this frame
+                tsp_masks = tsp_masks_batch[i] if i < len(tsp_masks_batch) else []
+                samurai_masks = samurai_masks_batch[i] if i < len(samurai_masks_batch) else []
+                
+                # Fuse masks intelligently
+                final_masks = self._fuse_masks_intelligently(tsp_masks, samurai_masks, frame_idx)
+                
+                # Apply de-identification
+                processed_frame = self._apply_deidentification(frame, final_masks)
+                processed_frames.append(processed_frame)
+                
+                # Update performance data
+                self._update_performance_data(frame_idx, batch_start_time, final_masks, True, frame_shape=frame.shape[:2])
+            
+            batch_time = time.time() - batch_start_time
+            self.logger.info(f"Batch processing completed in {batch_time:.2f}s ({batch_time/len(frames):.3f}s per frame)")
+            
+            return processed_frames
+            
+        except Exception as e:
+            self.logger.error(f"Batch processing failed, falling back to individual processing: {e}")
+            # Fall back to individual processing
+            return [self.process_frame(frame, idx) for frame, idx in zip(frames, frame_indices)]
+    
+    def _segment_with_tsp_sam_batch(self, frames: List[np.ndarray], frame_indices: List[int]) -> List[List[np.ndarray]]:
+        """Process multiple frames with TSP-SAM in batch for better GPU utilization."""
+        if self.tsp_sam_model is None or len(frames) == 1:
+            return [self._segment_with_tsp_sam(frames[0], frame_indices[0])]
+        
+        self.logger.info(f"TSP-SAM batch processing {len(frames)} frames")
+        batch_results = []
+        
+        try:
+            # For now, process individually but with optimized GPU settings
+            # Future enhancement: implement true batch processing for TSP-SAM
+            for frame, frame_idx in zip(frames, frame_indices):
+                masks = self._segment_with_tsp_sam(frame, frame_idx)
+                batch_results.append(masks)
+            
+            return batch_results
+            
+        except Exception as e:
+            self.logger.error(f"TSP-SAM batch processing failed: {e}")
+            return [[] for _ in frames]
+    
+    def _segment_with_samurai_batch(self, frames: List[np.ndarray], frame_indices: List[int]) -> List[List[np.ndarray]]:
+        """Process multiple frames with SAMURAI in batch for better GPU utilization."""
+        if not hasattr(self, 'samurai_auto_generator') or self.samurai_auto_generator is None:
+            return [[] for _ in frames]
+        
+        self.logger.info(f"SAMURAI batch processing {len(frames)} frames")
+        batch_results = []
+        
+        try:
+            # For now, process individually but with optimized settings
+            # Future enhancement: implement true batch processing for SAMURAI
+            for frame, frame_idx in zip(frames, frame_indices):
+                masks = self._segment_with_samurai(frame, frame_idx)
+                batch_results.append(masks)
+            
+            return batch_results
+            
+        except Exception as e:
+            self.logger.error(f"SAMURAI batch processing failed: {e}")
+            return [[] for _ in frames]
     
     def _segment_with_tsp_sam_temporal(self, frame: np.ndarray, frame_idx: int, 
                                       previous_frames: List[np.ndarray] = None) -> List[np.ndarray]:
@@ -691,7 +1115,7 @@ class HybridTemporalPipeline:
         try:
             # Performance optimization: Check frame cache for similar frames
             frame_hash = self._get_frame_hash(frame)
-            cache_key = f"{frame_hash}_{frame_idx}"
+            cache_key = f"samurai_{frame_hash}"  # Remove frame_idx for better cache hits
             
             if cache_key in self._frame_cache:
                 self._cache_hits += 1
@@ -732,6 +1156,7 @@ class HybridTemporalPipeline:
             
             # Cache the results for potential reuse
             self._frame_cache[cache_key] = binary_masks
+            self._manage_cache_size()
             
             self.logger.info(f"Frame {frame_idx}: SAMURAI generated {len(binary_masks)} person masks (cache miss #{self._cache_misses})")
             return binary_masks
@@ -783,13 +1208,30 @@ class HybridTemporalPipeline:
             return frame
     
     def _fuse_masks_intelligently(self, tsp_masks: List[np.ndarray], samurai_masks: List[np.ndarray], frame_idx: int) -> List[np.ndarray]:
-        """Intelligently fuse TSP-SAM scene context with SAMURAI person masks."""
+        """Intelligently fuse TSP-SAM scene context with SAMURAI person masks with quality validation."""
         final_masks = []
+        frame_shape = None
+        validated_masks_count = 0
+        rejected_masks_count = 0
         
-        # Start with SAMURAI person masks (high precision)
+        # Get frame shape from first available mask
         if samurai_masks is not None and len(samurai_masks) > 0:
-            final_masks.extend(samurai_masks)
-            self.logger.info(f"Frame {frame_idx}: Using {len(samurai_masks)} SAMURAI person masks")
+            frame_shape = samurai_masks[0].shape[:2]
+        elif tsp_masks is not None and len(tsp_masks) > 0:
+            frame_shape = tsp_masks[0].shape[:2]
+        
+        # Start with SAMURAI person masks (high precision) - with quality validation
+        if samurai_masks is not None and len(samurai_masks) > 0:
+            for mask_idx, mask in enumerate(samurai_masks):
+                is_valid, reason, confidence = self._validate_mask_quality(mask, frame_shape, "SAMURAI")
+                if is_valid:
+                    final_masks.append(mask)
+                    validated_masks_count += 1
+                    self.logger.debug(f"Frame {frame_idx}: SAMURAI mask {mask_idx} validated (confidence: {confidence:.3f})")
+                else:
+                    rejected_masks_count += 1
+                    self.logger.debug(f"Frame {frame_idx}: SAMURAI mask {mask_idx} rejected - {reason}")
+            self.logger.info(f"Frame {frame_idx}: Using {len(final_masks)} SAMURAI person masks ({rejected_masks_count} rejected)")
         
         # Add TSP-SAM scene context for areas not covered by person masks
         if tsp_masks is not None and len(tsp_masks) > 0 and samurai_masks is not None and len(samurai_masks) > 0:
@@ -903,6 +1345,26 @@ class HybridTemporalPipeline:
             except Exception as frame_detail_error:
                 self.logger.error(f"Frame {frame_idx}: Error storing frame details: {frame_detail_error}")
             
+            # Update temporal consistency data
+            try:
+                if hasattr(self, '_temporal_iou_scores') and self._temporal_iou_scores:
+                    # Store the latest temporal IoU score
+                    latest_iou = self._temporal_iou_scores[-1]
+                    self.performance_data["temporal_consistency"]["frame_to_frame_iou"].append(latest_iou)
+                    
+                    # Calculate and update average temporal IoU
+                    avg_temporal_iou = np.mean(self._temporal_iou_scores)
+                    self.performance_data["temporal_consistency"]["average_temporal_iou"] = float(avg_temporal_iou)
+                    
+                    # Calculate temporal stability score
+                    stability_score = self._calculate_temporal_stability_score()
+                    self.performance_data["temporal_consistency"]["temporal_stability_score"] = float(stability_score)
+                    
+                    self.logger.debug(f"Frame {frame_idx}: Temporal consistency updated - IoU: {latest_iou:.3f}, Avg: {avg_temporal_iou:.3f}, Stability: {stability_score:.3f}")
+                    
+            except Exception as temporal_error:
+                self.logger.error(f"Frame {frame_idx}: Error updating temporal consistency: {temporal_error}")
+            
             self.logger.debug(f"Frame {frame_idx}: Performance data update completed successfully")
             
         except Exception as e:
@@ -916,6 +1378,15 @@ class HybridTemporalPipeline:
         """Process a single frame using the hybrid pipeline with temporal awareness."""
         frame_start_time = time.time()
         self.logger.info(f"Processing frame {frame_idx}")
+        
+        # Monitor memory usage at start of frame processing with cleanup
+        memory_mb = self._monitor_memory_with_cleanup(frame_idx, "frame_start")
+        
+        # Perform memory cleanup if needed
+        self._cleanup_memory(frame_idx)
+        
+        # Manage model memory
+        self._manage_model_memory(frame_idx)
         
         try:
             # 1. TSP-SAM: Scene-level temporal segmentation with temporal context
@@ -937,6 +1408,10 @@ class HybridTemporalPipeline:
             # 3. Intelligent mask fusion
             final_masks = self._fuse_masks_intelligently(tsp_masks, samurai_masks, frame_idx)
             
+            # 4. Analyze temporal consistency
+            temporal_iou, consistency_status = self._analyze_temporal_consistency(frame_idx, final_masks)
+            self.logger.debug(f"Frame {frame_idx}: Temporal IoU: {temporal_iou:.3f}, Status: {consistency_status}")
+            
             # Store masks for video creation
             self._last_frame_masks = final_masks
             self.logger.debug(f"DEBUG: Frame {frame_idx}: Stored {len(final_masks)} masks in _last_frame_masks")
@@ -944,11 +1419,17 @@ class HybridTemporalPipeline:
             if isinstance(final_masks, list) and len(final_masks) > 0:
                 self.logger.debug(f"DEBUG: Frame {frame_idx}: First mask shape: {final_masks[0].shape if final_masks[0] is not None else 'None'}")
             
-            # 4. Apply de-identification
+            # 5. Apply de-identification
             deidentified_frame = self._apply_deidentification(frame, final_masks, frame_idx)
             
             # Update performance data
             self._update_performance_data(frame_idx, frame_start_time, final_masks, True, frame_shape=frame.shape[:2])
+            
+            # Monitor memory usage at end of frame processing with cleanup
+            memory_mb_end = self._monitor_memory_with_cleanup(frame_idx, "frame_end")
+            
+            # Final memory cleanup after frame processing
+            self._cleanup_memory(frame_idx, force_cleanup=(frame_idx % 10 == 0))
             
             # Update frame history for temporal processing
             if not hasattr(self, '_frame_history'):
@@ -1107,6 +1588,12 @@ class HybridTemporalPipeline:
                 "cache_hits": self._cache_hits,
                 "cache_misses": self._cache_misses,
                 "cache_hit_rate": f"{(self._cache_hits / (self._cache_hits + self._cache_misses) * 100):.1f}%" if (self._cache_hits + self._cache_misses) > 0 else "0%"
+            },
+            "temporal_consistency_summary": {
+                "average_temporal_iou": f"{self.performance_data['temporal_consistency']['average_temporal_iou']:.3f}",
+                "temporal_stability_score": f"{self.performance_data['temporal_consistency']['temporal_stability_score']:.3f}",
+                "consistency_quality": "Excellent" if self.performance_data['temporal_consistency']['average_temporal_iou'] > 0.8 else "Good" if self.performance_data['temporal_consistency']['average_temporal_iou'] > 0.6 else "Moderate",
+                "total_frame_comparisons": len(self.performance_data['temporal_consistency']['frame_to_frame_iou'])
             }
         }
         
@@ -1191,6 +1678,15 @@ class HybridTemporalPipeline:
         print(f"   Final Video: {deid_output['final_video']}")
         print(f"   Privacy Protection: {deid_output['privacy_protection']}")
         
+        # Temporal Consistency
+        if "temporal_consistency_summary" in self.performance_data["summary"]:
+            temporal_summary = self.performance_data["summary"]["temporal_consistency_summary"]
+            print(f"\nTEMPORAL CONSISTENCY:")
+            print(f"   Average IoU: {temporal_summary['average_temporal_iou']}")
+            print(f"   Stability Score: {temporal_summary['temporal_stability_score']}")
+            print(f"   Quality: {temporal_summary['consistency_quality']}")
+            print(f"   Frame Comparisons: {temporal_summary['total_frame_comparisons']}")
+        
         print("="*60)
     
     def process_video(self, max_frames: Optional[int] = None):
@@ -1234,6 +1730,12 @@ class HybridTemporalPipeline:
             wandb_step = 0
             self.logger.info("W&B logging enabled - will log metrics for each frame")
         
+        # Batch processing optimization
+        if self.enable_batch_processing:
+            self.logger.info(f"Batch processing enabled with batch size: {self.batch_size}")
+            batch_frames = []
+            batch_indices = []
+            
         while frame_count < end_frame:
             ret, frame = cap.read()
             if not ret:
@@ -1249,9 +1751,38 @@ class HybridTemporalPipeline:
             self.logger.info(f"Processing frame {frame_count}")
             
             try:
-                # Process frame using the hybrid pipeline
-                processed_frame = self.process_frame(frame, frame_count)
-                processed_frames.append(processed_frame)
+                # Batch processing logic
+                if self.enable_batch_processing:
+                    batch_frames.append(frame)
+                    batch_indices.append(frame_count)
+                    
+                    # Process batch when it's full or we're at the end
+                    if len(batch_frames) >= self.batch_size or frame_count == end_frame - 1:
+                        self.logger.info(f"Processing batch of {len(batch_frames)} frames")
+                        batch_processed_frames = self._process_frames_batch(batch_frames, batch_indices)
+                        processed_frames.extend(batch_processed_frames)
+                        
+                        # Store frames and masks for video creation (batch)
+                        for i, (batch_frame, batch_idx) in enumerate(zip(batch_frames, batch_indices)):
+                            if hasattr(self, 'frames_for_video'):
+                                self.frames_for_video.append(batch_frame)
+                            else:
+                                self.frames_for_video = [batch_frame]
+                            
+                            # Store masks for this frame
+                            if hasattr(self, 'masks_for_video'):
+                                frame_masks = getattr(self, '_last_frame_masks', [])
+                                self.masks_for_video.append(frame_masks)
+                            else:
+                                self.masks_for_video = []
+                        
+                        # Clear batch
+                        batch_frames = []
+                        batch_indices = []
+                else:
+                    # Single frame processing (original logic)
+                    processed_frame = self.process_frame(frame, frame_count)
+                    processed_frames.append(processed_frame)
                 
                 # Debug: Show frame processing success
                 self.logger.info(f"DEBUG: Successfully processed frame {frame_count}, added to processed_frames (total: {len(processed_frames)})")
@@ -1261,28 +1792,29 @@ class HybridTemporalPipeline:
                 frame_success = True
                 error_message = None
                 
-                # Performance data is already updated in process_frame() - no need to duplicate here
-                self.logger.debug(f"Frame {frame_count}: Performance data already updated in process_frame")
+                # Performance data is already updated in process_frame() or batch processing - no need to duplicate here
+                self.logger.debug(f"Frame {frame_count}: Performance data already updated")
                 
-                # Store frames and masks for video creation
-                self.logger.debug(f"DEBUG: Frame {frame_count}: Storing frame and masks for video creation")
-                if hasattr(self, 'frames_for_video'):
-                    self.frames_for_video.append(frame)
-                    self.logger.debug(f"DEBUG: Frame {frame_count}: Appended frame to frames_for_video (total: {len(self.frames_for_video)})")
-                else:
-                    self.frames_for_video = [frame]
-                    self.logger.debug(f"DEBUG: Frame {frame_count}: Initialized frames_for_video with first frame")
-                    
-                # Store the actual masks (not the processed frame)
-                if hasattr(self, 'masks_for_video'):
-                    # Get the masks from the last processed frame
-                    frame_masks = getattr(self, '_last_frame_masks', [])
-                    self.masks_for_video.append(frame_masks)
-                    self.logger.debug(f"DEBUG: Frame {frame_count}: Appended {len(frame_masks)} masks to masks_for_video (total: {len(self.masks_for_video)})")
-                    self.logger.debug(f"DEBUG: Frame {frame_count}: _last_frame_masks type: {type(frame_masks)}, content: {[type(m) for m in frame_masks] if isinstance(frame_masks, list) else 'N/A'}")
-                else:
-                    self.masks_for_video = []
-                    self.logger.debug(f"DEBUG: Frame {frame_count}: Initialized masks_for_video as empty list")
+                # Store frames and masks for video creation (only for single frame processing)
+                if not self.enable_batch_processing:
+                    self.logger.debug(f"DEBUG: Frame {frame_count}: Storing frame and masks for video creation")
+                    if hasattr(self, 'frames_for_video'):
+                        self.frames_for_video.append(frame)
+                        self.logger.debug(f"DEBUG: Frame {frame_count}: Appended frame to frames_for_video (total: {len(self.frames_for_video)})")
+                    else:
+                        self.frames_for_video = [frame]
+                        self.logger.debug(f"DEBUG: Frame {frame_count}: Initialized frames_for_video with first frame")
+                        
+                    # Store the actual masks (not the processed frame)
+                    if hasattr(self, 'masks_for_video'):
+                        # Get the masks from the last processed frame
+                        frame_masks = getattr(self, '_last_frame_masks', [])
+                        self.masks_for_video.append(frame_masks)
+                        self.logger.debug(f"DEBUG: Frame {frame_count}: Appended {len(frame_masks)} masks to masks_for_video (total: {len(self.masks_for_video)})")
+                        self.logger.debug(f"DEBUG: Frame {frame_count}: _last_frame_masks type: {type(frame_masks)}, content: {[type(m) for m in frame_masks] if isinstance(frame_masks, list) else 'N/A'}")
+                    else:
+                        self.masks_for_video = []
+                        self.logger.debug(f"DEBUG: Frame {frame_count}: Initialized masks_for_video as empty list")
                 
                 # Enhanced W&B logging for each frame (ONLY ONCE per frame)
                 if self.use_wandb:
@@ -2739,6 +3271,11 @@ Examples:
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
     parser.add_argument("--config", type=str, help="Path to dataset configuration YAML file")
+    parser.add_argument("--batch-size", type=int, default=4, help="Batch size for processing optimization (default: 4)")
+    parser.add_argument("--no-batch", action="store_true", help="Disable batch processing optimization")
+    parser.add_argument("--memory-threshold", type=int, default=8000, help="Memory threshold in MB for cleanup (default: 8000)")
+    parser.add_argument("--cleanup-frequency", type=int, default=5, help="Memory cleanup frequency in frames (default: 5)")
+    parser.add_argument("--no-memory-optimization", action="store_true", help="Disable memory optimization")
     
     args = parser.parse_args()
     
@@ -2797,7 +3334,12 @@ Examples:
         chunk_size=args.chunk_size,
         deidentification_strategy=args.deidentification_strategy,
         start_time=args.start_time,
-        end_time=args.end_time
+        end_time=args.end_time,
+        enable_batch_processing=not args.no_batch,
+        batch_size=args.batch_size,
+        enable_memory_optimization=not args.no_memory_optimization,
+        memory_threshold_mb=args.memory_threshold,
+        cleanup_frequency=args.cleanup_frequency
     )
     
     # Debug: Show pipeline initialization

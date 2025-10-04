@@ -25,6 +25,7 @@ uvicorn>=0.20.0
 # Utilities
 pathlib2>=2.3.0
 requests>=2.28.0
+psutil>=5.9.0  # For memory monitoring
 
 # Optional packages (install separately if needed)
 # mediapipe>=0.8.0  # May have Python version compatibility issues
