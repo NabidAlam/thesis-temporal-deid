@@ -2931,11 +2931,19 @@ class HybridTemporalPipeline:
         
         self.logger.info(f"Video info: {total_frames} frames, {fps:.2f} fps, {duration:.2f} seconds")
         
-        # Determine actual frames to process
-        if max_frames:
-            frames_to_process = min(max_frames, total_frames)
+        # Calculate frame range based on time parameters (if specified)
+        if self.start_time is not None or self.end_time is not None:
+            start_frame, end_frame = self._calculate_frame_range_from_time(cap)
+            frames_to_process = end_frame - start_frame
+            self.logger.info(f"Time-based processing: {self.start_time}s to {self.end_time}s = frames {start_frame} to {end_frame-1}")
         else:
-            frames_to_process = total_frames
+            # Determine actual frames to process
+            if max_frames:
+                frames_to_process = min(max_frames, total_frames)
+            else:
+                frames_to_process = total_frames
+            start_frame = 0
+            end_frame = frames_to_process
         
         self.logger.info(f"Processing {frames_to_process} frames in chunks of {chunk_size}")
         
@@ -2943,9 +2951,8 @@ class HybridTemporalPipeline:
         start_time = time.time()
         total_processed = 0
         
-        # Define frame range for chunked processing
-        start_frame = 0
-        end_frame = frames_to_process
+        # Define frame range for chunked processing (start_frame already set above)
+        end_frame = start_frame + frames_to_process
         
         self.logger.info(f"DEBUG: Starting chunked processing from frame {start_frame} to {end_frame}")
         self.logger.info(f"DEBUG: Chunk size: {chunk_size}")
